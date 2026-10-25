@@ -181,7 +181,7 @@ export class App {
 
   /**
    * 批注墨迹：老师的临时痕迹，**不进 Scene**、不参与物理、不影响分享串。
-   * 点存世界坐标、线宽存屏幕像素（见 docs/ANNOTATION-DESIGN.md）。
+   * 点存世界坐标、线宽存屏幕像素（见 docs/DRAWING.md §6）。
    * 切场景 / 回选择页时清空。
    */
   ink: InkStroke[] = []
@@ -361,7 +361,7 @@ export class App {
     this.toastText = ''
     this.toastUntil = 0
     this.fromProblem = false
-    // 批注是「这一张图上的临时痕迹」，换场景就清掉（不进 Scene，见 ANNOTATION-DESIGN.md）
+    // 批注是「这一张图上的临时痕迹」，换场景就清掉（不进 Scene，见 docs/DRAWING.md §6）
     this.ink = []
     this.doc = cloneScene(scene)
     this.presetId = presetId ?? (this.doc.meta.preset && presetById(this.doc.meta.preset) ? this.doc.meta.preset : null)

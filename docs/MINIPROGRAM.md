@@ -1,7 +1,7 @@
 # 小程序壳：实现与验证实录
 
 > 状态：**已跑通并被自动化验证**（2026-10-21，微信开发者工具，模拟器 iPhone 12 / 390×844 @3x）。
-> 验证脚本：[scripts/mp-verify.mjs](../scripts/mp-verify.mjs)（11 项全过）。
+> 验证脚本：[scripts/mp-verify.mjs](../scripts/mp-verify.mjs)（15 项全过）。
 
 ## 1. 为什么壳可以很薄
 
@@ -57,7 +57,7 @@ npm run build:mp
 | 字体 | 系统字体栈（PingFang SC / Microsoft YaHei 回退） |
 | 读取 AppID | CLI 打开项目时校验登录态下的真实 AppID；`touristappid` 会报「不存在此 AppID」 |
 
-## 5. 验证（`node scripts/mp-verify.mjs`）
+## 5. 验证（`node scripts/mp-verify.mjs`，15 项）
 
 ```
 PASS  页面启动  pages=1

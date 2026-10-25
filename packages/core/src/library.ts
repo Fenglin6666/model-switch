@@ -4,8 +4,7 @@
  * 存储完全在本地（Web: localStorage；小程序: wx.setStorageSync），零后端。
  * 一条记录里存**完整 Scene**，所以打开就是当时那一份，不需要重新生成。
  *
- * 体积约束（`docs/COLLECTION-DESIGN.md` 的思路）：一个 Scene 约 8–30 KB，
- * 上限 60 个模型，并在 UI 上显示占用——不做静默丢弃。
+ * 体积约束：一个 Scene 约 8–30 KB，上限 60 个模型，并在 UI 上显示占用——不做静默丢弃。
  */
 import type { Scene } from './scene'
 import type { BankProblem } from './bank'

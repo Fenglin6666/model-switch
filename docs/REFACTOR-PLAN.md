@@ -1,6 +1,6 @@
 # app.ts 拆分计划
 
-> 起因：审计指出 `packages/ui/src/app.ts` 是 4772 行的巨石——顶栏、工具轨、检查器、临界浮层、题库、详情、画图、场笔全在一个类里。
+> 起因：审计指出 `packages/ui/src/app.ts` 是 4772 行的巨石——顶栏、工具轨、检查器、题库、详情、画图、场笔全在一个类里。
 > 结论：**先不动架构，只做文件级拆分 + 纯逻辑外提**。目标不是「好看」，是让 UI 逻辑能被单测覆盖、改一处不牵连全身。
 
 行数以 `npm run doc:facts` 生成的 [CODEMAP](CODEMAP.md) 事实块为准，本文不手写数字。
@@ -16,7 +16,7 @@
 | `packages/ui/src/editor/drawing.ts` | 场笔手势判定、手势→场、识别→Body、形状缩放 | **纯函数** |
 | `packages/ui/src/scene-bounds.ts` | 取景包围点 | 纯函数 |
 | `tests/ui-layout.test.ts` | 8 项：宽屏/窄屏/断点/相机对准画布中心/浮动面板 | — |
-| `tests/ui-drawing.test.ts` | 11 项：三种手势、交叉判定、四种 Body 映射、缩放 | — |
+| `tests/ui-drawing.test.ts` | 11 项：拖区域建场、四种 Body 映射、缩放 | — |
 
 拆分原则（后面继续拆时照这个来）：
 
@@ -69,7 +69,13 @@
 
 ---
 
-## 顺手要做的两件（低成本）
+## 已经顺手做完的两件
 
-1. **`npm run doc:check` 进 CI**：行数漂了直接红。已经写好 `scripts/doc-facts.mjs`。
-2. **PR 模板加一条**：改了 `app.ts` 的方法名 → 顺手 grep 一遍 `docs/` 里有没有旧名字（`renderTopBar`、`SHAPE_TOOLS` 这些已经死掉的符号还在 CODEMAP 里躺过很久）。
+1. **`npm run doc:check` 进了 CI**：行数漂了直接红（`scripts/doc-facts.mjs`）。
+2. **PR 模板加了自检**：改了 `app.ts` 的方法名 → grep 一遍 `docs/` 里有没有旧名字
+   （`renderTopBar`、`SHAPE_TOOLS` 这些死符号在 CODEMAP 里躺过很久）。
+
+## 拆完之后
+
+`app.ts` 从 4772 行降到现在这个体量之后，**不要再继续为了数字往下拆**。
+下一步的收益在「输入层有测试」和「sheets 的参数表数据化」，不在行数。
