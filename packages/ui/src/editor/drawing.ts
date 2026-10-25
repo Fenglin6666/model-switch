@@ -13,47 +13,37 @@ import { THEME } from '@render/theme'
 export const FIELD_E = 40
 export const FIELD_B = 2
 
-/** 两段是否相交（画 × 时判断两笔交叉） */
-export function segmentsCross(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2): boolean {
-  const cross = (o: Vec2, a: Vec2, b: Vec2) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-  const d1 = cross(b1, b2, a1)
-  const d2 = cross(b1, b2, a2)
-  const d3 = cross(a1, a2, b1)
-  const d4 = cross(a1, a2, b2)
-  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+export type FieldKind = 'E' | 'B'
+
+/** 拖出来的那块场：region 为 null 表示全场 */
+export type FieldDraft = {
+  field: { type: 'E'; vector: Vec2 } | { type: 'B'; bz: number }
+  region: { w: number; h: number; x: number; y: number; label: string } | null
 }
 
-export type FieldGesture = 'arrow' | 'dot' | 'cross' | 'pending'
+/** 拖得太小就当「点了一下」——建一块全场场，而不是一个没用的针尖 */
+const MIN_FIELD_SIZE = 0.3
 
 /**
- * 场笔这一笔算什么：
- * - 长线（> 0.8）→ 箭头（电场）
- * - 点一下（< 0.12）→ 磁场向外（·）
- * - 短线 + 上一笔在 1.4s 内且相交 → ×（磁场向里）
- * - 其余 → 先记下这一笔，等第二笔（返回 pending）
+ * 电场 / 磁场：按住拖出一个矩形，场就长在这块区域里。
+ * 方向先给个默认（E 向下、B 向外），选中的时候在左侧面板调。
  */
-export function classifyFieldGesture(input: {
-  start: Vec2
-  current: Vec2
-  prev: { a: Vec2; b: Vec2; t: number } | null
-  now: number
-}): FieldGesture {
-  const len = Math.hypot(input.current.x - input.start.x, input.current.y - input.start.y)
-  if (len < 0.12) return 'dot'
-  if (len > 0.8) return 'arrow'
-  const prev = input.prev
-  if (prev && input.now - prev.t < 1400 && segmentsCross(prev.a, prev.b, input.start, input.current)) return 'cross'
-  return 'pending'
-}
-
-export type PendingField = { type: 'E' | 'B'; vector?: Vec2; bz?: number }
-
-/** 手势 → 待落地的场（方向、正负都定死在这里） */
-export function fieldFromGesture(g: Exclude<FieldGesture, 'pending'>, start: Vec2, current: Vec2): PendingField {
-  if (g === 'dot') return { type: 'B', bz: FIELD_B }
-  if (g === 'cross') return { type: 'B', bz: -FIELD_B }
-  const len = Math.max(1e-6, Math.hypot(current.x - start.x, current.y - start.y))
-  return { type: 'E', vector: { x: ((current.x - start.x) / len) * FIELD_E, y: ((current.y - start.y) / len) * FIELD_E } }
+export function fieldDraftFromDrag(kind: FieldKind, start: Vec2, current: Vec2): FieldDraft {
+  const w = Math.abs(current.x - start.x)
+  const h = Math.abs(current.y - start.y)
+  const field: FieldDraft['field'] =
+    kind === 'E' ? { type: 'E', vector: { x: 0, y: -FIELD_E } } : { type: 'B', bz: FIELD_B }
+  if (w < MIN_FIELD_SIZE || h < MIN_FIELD_SIZE) return { field, region: null }
+  return {
+    field,
+    region: {
+      w,
+      h,
+      x: (start.x + current.x) / 2,
+      y: (start.y + current.y) / 2,
+      label: kind === 'E' ? 'E 区' : 'B 区',
+    },
+  }
 }
 
 /**

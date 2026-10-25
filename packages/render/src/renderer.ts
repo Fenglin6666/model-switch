@@ -505,8 +505,10 @@ function drawFields(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera)
       }
     }
     if (rect.w < 30 || rect.h < 30) continue
-    if (f.type === 'B') drawMagnetic(ctx, rect, f.bz, f.label)
-    else drawElectric(ctx, rect, f.vector, f.label)
+    // 有区域的场由区域自己的标签负责，别再叠一个角落标签
+    const showTag = !region
+    if (f.type === 'B') drawMagnetic(ctx, rect, f.bz, f.label, showTag)
+    else drawElectric(ctx, rect, f.vector, f.label, showTag)
   }
 }
 
@@ -531,6 +533,7 @@ function drawMagnetic(
   rect: { x: number; y: number; w: number; h: number },
   bz: number,
   label?: string,
+  showTag = true,
 ): void {
   const outward = bz >= 0
   // 间距 30px：够密看得出「处处有场」，又不至于变成噪点（规则 3：不抢注意力）
@@ -563,7 +566,7 @@ function drawMagnetic(
   if (outward) ctx.fill()
   else ctx.stroke()
   ctx.restore()
-  fieldTag(ctx, label ?? (outward ? 'B 向外 ·' : 'B 向里 ×'), rect, THEME.blue)
+  if (showTag) fieldTag(ctx, label ?? (outward ? 'B 向外 ·' : 'B 向里 ×'), rect, THEME.blue)
 }
 
 function drawElectric(
@@ -571,6 +574,7 @@ function drawElectric(
   rect: { x: number; y: number; w: number; h: number },
   vector: { x: number; y: number },
   label?: string,
+  showTag = true,
 ): void {
   const mag = Math.hypot(vector.x, vector.y)
   if (mag < 1e-6) return
@@ -609,7 +613,7 @@ function drawElectric(
   }
   ctx.stroke()
   ctx.restore()
-  fieldTag(ctx, label ?? 'E', rect, THEME.blue)
+  if (showTag) fieldTag(ctx, label ?? 'E', rect, THEME.blue)
 }
 
 // ---------------------------------------------------------------------------

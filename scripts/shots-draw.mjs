@@ -210,70 +210,91 @@ const erased = await page.evaluate((id) => {
 }, snapInfo.id)
 check('橡皮擦能删掉画的东西', erased.after === erased.before - 1, `${erased.before} → ${erased.after}`)
 
-// 9. 场：画箭头 → 电场
+// 9. 电场按钮：拖一块区域 → 场长在里面
 await reset()
-const arrow = await page.evaluate(() => {
+const eField = await page.evaluate(() => {
   const a = window.app
-  a.tool = 'field'
-  const from = a.camera.project({ x: 0.2, y: 2.2 }, 0)
-  const to = a.camera.project({ x: 0.2, y: 1.2 }, 0)
-  a.pointerDown(from.x, from.y)
-  a.pointerMove(to.x, to.y)
-  a.pointerUp()
-  return { pending: a.pendingField }
-})
-check('画箭头 = 电场（方向沿箭头）', arrow.pending?.type === 'E' && arrow.pending.vector.y < 0, JSON.stringify(arrow.pending))
-
-// 10. 第二笔拖区域 → 只作用在框里
-const region = await page.evaluate(() => {
-  const a = window.app
-  const p1 = a.camera.project({ x: -1.4, y: 1.0 }, 0)
-  const p2 = a.camera.project({ x: 1.0, y: 2.4 }, 0)
+  a.tool = 'fieldE'
+  // 直接在「舞台」里取两个屏幕点（避开左侧面板和底部图表）
+  const st = a.stageRect()
+  const p1 = { x: st.x + st.w * 0.1, y: st.y + st.h * 0.55 }
+  const p2 = { x: st.x + st.w * 0.42, y: st.y + st.h * 0.25 }
   a.pointerDown(p1.x, p1.y)
   a.pointerMove(p2.x, p2.y)
   a.pointerUp()
   const f = a.doc.fields[a.doc.fields.length - 1]
   const r = a.doc.regions[a.doc.regions.length - 1]
-  return { fields: a.doc.fields.length, regionLabel: r?.label, regionId: f?.regionId, same: f?.regionId === r?.id }
+  return {
+    fields: a.doc.fields.length,
+    type: f?.type,
+    regionId: f?.regionId,
+    same: f?.regionId === r?.id,
+    label: r?.label,
+    selected: a.selectedFieldId === f?.id,
+    tool: a.tool,
+  }
 })
-check('再拖一块区域 → 电场只作用在框里', region.fields === 1 && region.same && region.regionLabel === 'E 区', JSON.stringify(region))
+check(
+  '电场按钮：拖一块区域 → 电场只作用在框里',
+  eField.fields === 1 && eField.type === 'E' && eField.same && eField.label === 'E 区',
+  JSON.stringify(eField),
+)
+check('建完自动选中这块场（左侧可直接调）', eField.selected && eField.tool === 'select', JSON.stringify({ sel: eField.selected, tool: eField.tool }))
 await shot('230-field-e')
 
-// 11. 点一下 = 磁场向外
-const dot = await page.evaluate(() => {
+// 10. 左侧面板：场强 + 方向
+const fieldParams = await page.evaluate(() => {
   const a = window.app
-  a.tool = 'field'
-  const at = a.camera.project({ x: -0.4, y: 1.8 }, 0)
-  a.pointerDown(at.x, at.y)
-  a.pointerUp()
-  const pending = a.pendingField
-  a.pointerDown(at.x, at.y)
-  a.pointerUp()
-  const f = a.doc.fields[a.doc.fields.length - 1]
-  return { pending, bz: f.bz, regionId: f.regionId ?? null }
+  a.frame(0, 0)
+  const ids = a.ui.hits.map((h) => h.id)
+  const mag = a.doc.fields[0]
+  const before = { x: mag.vector.x, y: mag.vector.y }
+  // 方向拖到 0°（向右）
+  const slider = a.ui.hits.find((h) => h.id === 'ctl:field-angle')
+  if (slider) {
+    a.pointerDown(slider.rect.x + 2, slider.rect.y + slider.rect.h - 20)
+    a.pointerUp()
+  }
+  const after = a.doc.fields[0]
+  return { hasMag: ids.includes('ctl:field-mag'), hasAngle: ids.includes('ctl:field-angle'), before, after: { x: after.vector.x, y: after.vector.y } }
 })
-check('点一下 = 磁场向外（·）', dot.pending?.type === 'B' && dot.bz > 0, JSON.stringify(dot))
+check('选中场后左侧有「场强 + 方向」', fieldParams.hasMag && fieldParams.hasAngle, JSON.stringify(fieldParams))
+check('拖方向滑杆 → 场的方向真的变了', Math.abs(fieldParams.after.x) > Math.abs(fieldParams.before.x), `${JSON.stringify(fieldParams.before)} → ${JSON.stringify(fieldParams.after)}`)
 
-// 12. 画 × = 磁场向里
-const cross = await page.evaluate(() => {
+// 11. 磁场按钮 + 向外/向里
+const bField = await page.evaluate(() => {
   const a = window.app
-  a.tool = 'field'
-  const c = a.camera.project({ x: -1.3, y: 2.0 }, 0)
-  const s = 22
-  a.pointerDown(c.x - s, c.y - s)
-  a.pointerMove(c.x + s, c.y + s)
-  a.pointerUp()
-  a.pointerDown(c.x + s, c.y - s)
-  a.pointerMove(c.x - s, c.y + s)
-  a.pointerUp()
-  const pending = a.pendingField
-  a.pointerDown(c.x, c.y)
+  a.tool = 'fieldB'
+  const st = a.stageRect()
+  const p1 = { x: st.x + st.w * 0.55, y: st.y + st.h * 0.55 }
+  const p2 = { x: st.x + st.w * 0.88, y: st.y + st.h * 0.25 }
+  a.pointerDown(p1.x, p1.y)
+  a.pointerMove(p2.x, p2.y)
   a.pointerUp()
   const f = a.doc.fields[a.doc.fields.length - 1]
-  return { pending, bz: f.bz }
+  const out = f.bz
+  a.setFieldSign(f.id, -1)
+  const inn = a.doc.fields[a.doc.fields.length - 1].bz
+  return { type: f.type, out, inn, n: a.doc.fields.length }
 })
-check('画一个 × = 磁场向里', cross.pending?.type === 'B' && cross.bz < 0, JSON.stringify(cross))
+check('磁场按钮：拖区域 → 默认向外，可切成向里', bField.type === 'B' && bField.out > 0 && bField.inn < 0, JSON.stringify(bField))
 await shot('231-field-b')
+
+// 12. 点一下（拖太小）= 全场；删除这块场
+const smallField = await page.evaluate(() => {
+  const a = window.app
+  a.tool = 'fieldE'
+  const at = a.camera.project({ x: 0.2, y: 1.4 }, 0)
+  a.pointerDown(at.x, at.y)
+  a.pointerUp()
+  const f = a.doc.fields[a.doc.fields.length - 1]
+  const fullScene = !f.regionId
+  const n = a.doc.fields.length
+  a.removeField(f.id)
+  return { fullScene, n, after: a.doc.fields.length }
+})
+check('拖太小 = 点一下 → 全场电场', smallField.fullScene, JSON.stringify(smallField))
+check('能删掉这块场', smallField.after === smallField.n - 1, JSON.stringify(smallField))
 
 // 13. 工具栏没有组件按钮（画什么就是什么）
 const rail = await page.evaluate(() => {
@@ -286,8 +307,8 @@ const rail = await page.evaluate(() => {
   }
 })
 check(
-  '工具栏只剩 7 个工具，没有组件/形状按钮',
-  rail.tools.length === 7 && !rail.hasComponentPalette && !rail.hasShapePalette,
+  '工具栏只有 8 个工具（含电场/磁场两个独立按钮），没有组件/形状按钮',
+  rail.tools.length === 8 && rail.tools.includes('tool:fieldE') && rail.tools.includes('tool:fieldB') && !rail.hasComponentPalette && !rail.hasShapePalette,
   rail.tools.join(','),
 )
 

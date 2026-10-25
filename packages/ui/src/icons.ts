@@ -23,6 +23,7 @@ export type IconName =
   | 'doc'
   | 'force'
   | 'field'
+  | 'fieldB'
   | 'link'
   | 'hand'
   | 'trash'
@@ -273,6 +274,21 @@ export function drawIcon(
       ctx.lineTo(9.4, 10)
       ctx.lineTo(14.6, 10)
       ctx.closePath()
+      ctx.fill()
+      break
+    case 'fieldB':
+      // 虚线框 + × 与 ·：磁场的两种朝向
+      ctx.setLineDash([2.4, 2.2])
+      p(() => ctx.rect(4, 5.5, 16, 13))
+      ctx.setLineDash([])
+      p(() => {
+        ctx.moveTo(7.6, 9.4)
+        ctx.lineTo(11.6, 13.4)
+        ctx.moveTo(11.6, 9.4)
+        ctx.lineTo(7.6, 13.4)
+      })
+      ctx.beginPath()
+      ctx.arc(16.2, 11.4, 1.7, 0, Math.PI * 2)
       ctx.fill()
       break
     case 'doc':

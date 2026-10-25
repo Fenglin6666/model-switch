@@ -5,8 +5,8 @@ import { Camera } from '@render/camera'
 import { pickBody, renderScene, type BodyVisual, type VisualState } from '@render/renderer'
 import { drawInk, inkHitTest, shouldSample, type InkStroke } from '@render/ink'
 import { THEME, font, rgba, roundRect } from '@render/theme'
-import { bodyAABB, renderGeometries, shapeArea } from '@core/shapes'
-import { clamp, simplifyPath, type Vec2 } from '@core/math'
+import { bodyAABB, pointInShape, renderGeometries, shapeArea } from '@core/shapes'
+import { clamp, rot, simplifyPath, type Vec2 } from '@core/math'
 import {
   type Body,
   type Anchor,     
@@ -61,14 +61,7 @@ import { Simulation, runCriterion } from '@physics/simulation'
 import { UI, inRect, type HitRegion, type Rect } from './widgets'
 import { sceneBoundsPoints } from './scene-bounds'
 import { computeLayout, floatingSheet, type EditorLayout } from './editor/layout'
-import {
-  FIELD_B,
-  FIELD_E,
-  bodyFromRecognized,
-  classifyFieldGesture,
-  fieldFromGesture,
-  scaleShape,
-} from './editor/drawing'
+import { FIELD_B, FIELD_E, bodyFromRecognized, fieldDraftFromDrag, scaleShape } from './editor/drawing'
 import {
   renderBank as renderBankPage,
   renderLibrary as renderLibraryPage,
@@ -113,7 +106,7 @@ export type AppOptions = {
   host?: AppHost
 }
 
-type Tool = 'select' | 'pen' | 'field' | 'connect' | 'ink' | 'eraser' | 'hand'
+type Tool = 'select' | 'pen' | 'fieldE' | 'fieldB' | 'connect' | 'ink' | 'eraser' | 'hand'
 
 type DragState =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -136,7 +129,8 @@ const SPEEDS = [0.5, 1, 2]
 const TOOLS: Array<{ id: Tool; icon: IconName; label: string }> = [
   { id: 'select', icon: 'select', label: '选择 / 拖动' },
   { id: 'pen', icon: 'pen', label: '手绘（自动规整）' },
-  { id: 'field', icon: 'field', label: '场（画箭头 / 点 / ×）' },
+  { id: 'fieldE', icon: 'field', label: '电场（拖一块区域）' },
+  { id: 'fieldB', icon: 'fieldB', label: '磁场（拖一块区域）' },
   { id: 'connect', icon: 'link', label: '连接（绳）' },
   { id: 'ink', icon: 'ink', label: '批注（讲课用）' },
   { id: 'eraser', icon: 'eraser', label: '橡皮擦' },
@@ -238,9 +232,8 @@ export class App {
   private panelScroll = 0
   private panelMaxScroll = 0
   private panelDrag: { lastY: number } | null = null
-  /** 场笔：第一笔定方向后的待选区；fieldStroke 记上一笔用来识别 × */
-  private pendingField: { type: 'E' | 'B'; vector?: Vec2; bz?: number } | null = null
-  private fieldStroke: { a: Vec2; b: Vec2; t: number } | null = null
+  /** 选中的场（拖出来的那块）；选中时左侧面板显示场强/方向 */
+  selectedFieldId: string | null = null
 
   constructor(opts: AppOptions) {
     this.ctx = opts.ctx
@@ -374,6 +367,7 @@ export class App {
     // 图表默认收起：先让场景当主角，顶栏图表键随时打开
     this.showChart = false
     this.selectedId = null
+    this.selectedFieldId = null
     this.history = []
     this.future = []
     this.playing = false
@@ -627,6 +621,108 @@ if (id) this.ensureBodyVisible(id)
         },
       },
     }
+  }
+
+  /** 点在哪块场区里（场区是虚线框，点框内就算选中） */
+  private pickFieldAt(world: Vec2): Field | null {
+    for (const region of this.doc.regions) {
+      if (region.role !== 'field') continue
+      const local = rot({ x: world.x - region.transform.x, y: world.y - region.transform.y }, -region.transform.angle)
+      if (pointInShape(region.shape, local)) {
+        const field = this.doc.fields.find((f) => f.kind === 'uniform' && f.regionId === region.id)
+        if (field) return field
+      }
+    }
+    return null
+  }
+
+  private selectField(id: string | null): void {
+    this.selectedFieldId = id
+    this.selectedId = null
+    this.selectedConstraintId = null
+    this.showWorld = false
+  }
+
+  /** 选中的场：把它的虚线框描一遍，让「选中了哪个」一眼可见 */
+  private renderFieldSelection(): void {
+    const field = this.doc.fields.find((f) => f.id === this.selectedFieldId)
+    if (!field || field.kind !== 'uniform' || !field.regionId) return
+    const region = this.doc.regions.find((r) => r.id === field.regionId)
+    if (!region) return
+    const ctx = this.ctx
+    const geoms = renderGeometries(region.shape, 'teach')
+    ctx.save()
+    ctx.strokeStyle = THEME.accent
+    ctx.lineWidth = 2
+    ctx.setLineDash([5, 4])
+    for (const g of geoms) {
+      const local = g.kind === 'fill' ? (g.outlines[0] ?? []) : g.points
+      if (local.length < 2) continue
+      const pts = local.map((pt) => {
+        const c = Math.cos(region.transform.angle)
+        const sn = Math.sin(region.transform.angle)
+        return this.camera.project(
+          { x: region.transform.x + pt.x * c - pt.y * sn, y: region.transform.y + pt.x * sn + pt.y * c },
+          0,
+        )
+      })
+      ctx.beginPath()
+      ctx.moveTo(pts[0]!.x, pts[0]!.y)
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
+      ctx.closePath()
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  /** 场强：E 保持方向改大小；B 保持正负改大小 */
+  private setFieldMagnitude(id: string, v: number): void {
+    const f = this.doc.fields.find((x) => x.id === id)
+    if (!f || f.kind !== 'uniform') return
+    if (f.type === 'E') {
+      const a = Math.atan2(f.vector.y, f.vector.x)
+      const vec = { x: Math.cos(a) * v, y: Math.sin(a) * v }
+      this.doc = { ...this.doc, fields: this.doc.fields.map((x) => (x.id === id ? { ...f, vector: vec } : x)) }
+    } else if (f.type === 'B') {
+      const sign = f.bz >= 0 ? 1 : -1
+      this.doc = { ...this.doc, fields: this.doc.fields.map((x) => (x.id === id ? { ...f, bz: sign * v } : x)) }
+    }
+    this.rebuild()
+  }
+
+  /** 电场方向：角度制，0° 指向右，90° 向上 */
+  private setFieldAngle(id: string, deg: number): void {
+    const f = this.doc.fields.find((x) => x.id === id)
+    if (!f || f.kind !== 'uniform' || f.type !== 'E') return
+    const mag = Math.max(1e-6, Math.hypot(f.vector.x, f.vector.y))
+    const a = (deg * Math.PI) / 180
+    const vec = { x: Math.cos(a) * mag, y: Math.sin(a) * mag }
+    this.doc = { ...this.doc, fields: this.doc.fields.map((x) => (x.id === id ? { ...f, vector: vec } : x)) }
+    this.rebuild()
+  }
+
+  /** 磁场朝向：+1 向外（·）/ -1 向里（×） */
+  private setFieldSign(id: string, sign: 1 | -1): void {
+    const f = this.doc.fields.find((x) => x.id === id)
+    if (!f || f.kind !== 'uniform' || f.type !== 'B') return
+    const mag = Math.abs(f.bz)
+    this.doc = { ...this.doc, fields: this.doc.fields.map((x) => (x.id === id ? { ...f, bz: sign * mag } : x)) }
+    this.rebuild()
+  }
+
+  private removeField(id: string): void {
+    const f = this.doc.fields.find((x) => x.id === id)
+    if (!f) return
+    this.pushHistory()
+    const regionId = f.kind === 'uniform' ? f.regionId : undefined
+    this.doc = {
+      ...this.doc,
+      fields: this.doc.fields.filter((x) => x.id !== id),
+      regions: regionId ? this.doc.regions.filter((r) => r.id !== regionId) : this.doc.regions,
+    }
+    this.selectedFieldId = null
+    this.rebuild()
+    this.toast('已删除这块场')
   }
 
   /** 按比例缩放一个形状（实现在 editor/drawing.ts，有单测） */
@@ -990,6 +1086,13 @@ if (id) this.ensureBodyVisible(id)
         this.selectConstraint(con.id)
         return
       }
+      // 没点到物体/约束，再看是不是点在某块场区里
+      const field = this.pickFieldAt(world)
+      if (field) {
+        this.selectField(field.id)
+        return
+      }
+      this.selectField(null)
       this.selectBody(null)
       this.drag = { kind: 'pan', lastX: x, lastY: y }
       return
@@ -1193,12 +1296,6 @@ if (id) this.ensureBodyVisible(id)
   }
 
   key(key: string, ctrl = false, shift = false): void {
-    if (key === 'Escape' && this.pendingField) {
-      this.pendingField = null
-      this.fieldStroke = null
-      this.toast('已取消这个场')
-      return
-    }
     if (key === 'Escape' && this.confirm) {
       this.confirm = null
       return
@@ -1243,8 +1340,8 @@ if (id) this.ensureBodyVisible(id)
   // -------------------------------------------------------------------------
 
   private finishDraw(d: Extract<DragState, { kind: 'draw' }>): void {
-    if (d.tool === 'field') {
-      this.finishFieldStroke(d.start, d.current)
+    if (d.tool === 'fieldE' || d.tool === 'fieldB') {
+      this.createField(d.tool === 'fieldE' ? 'E' : 'B', d.start, d.current)
       return
     }
     // 手绘：先识别意图，再按意图建物体（画什么就是什么）
@@ -1276,74 +1373,42 @@ if (id) this.ensureBodyVisible(id)
   // ---- 场：画箭头 = 电场，点 = 磁场向外，× = 磁场向里 ----
 
   /** 场笔第一笔：定方向；第二笔：拖一块区域 = 限定范围，点一下 = 全场 */
-  private finishFieldStroke(start: Vec2, current: Vec2): void {
-    const len = Math.hypot(current.x - start.x, current.y - start.y)
-
-    // 已经画了箭头/点：这一笔是选区
-    if (this.pendingField) {
-      if (len < 0.15) {
-        this.commitField(null)
-        return
-      }
-      this.commitField({
-        minX: Math.min(start.x, current.x),
-        minY: Math.min(start.y, current.y),
-        maxX: Math.max(start.x, current.x),
-        maxY: Math.max(start.y, current.y),
-      })
-      return
-    }
-
-    const now = Date.now()
-    const gesture = classifyFieldGesture({ start, current, prev: this.fieldStroke, now })
-    if (gesture === 'pending') {
-      this.fieldStroke = { a: start, b: current, t: now }
-      this.toast('再画一笔交叉 = ×（磁场向里）')
-      return
-    }
-    this.pendingField = fieldFromGesture(gesture, start, current)
-    this.fieldStroke = null
-    const name = gesture === 'arrow' ? '电场（沿箭头方向）' : gesture === 'dot' ? '磁场向外（·）' : '磁场向里（×）'
-    this.toast(`${name} · 再拖一块区域，或点一下 = 全场`)
-  }
-
-  private commitField(regionRect: { minX: number; minY: number; maxX: number; maxY: number } | null): void {
-    const pf = this.pendingField
-    if (!pf) return
+  /**
+   * 电场 / 磁场：拖一个矩形 → 场长在这块区域里（拖太小 = 全场）。
+   * 建完就选中它，左侧面板立刻能调场强和方向。
+   */
+  private createField(kind: 'E' | 'B', start: Vec2, current: Vec2): void {
+    const draft = fieldDraftFromDrag(kind, start, current)
     const stamp = Date.now().toString(36)
     const fieldId = `field-${stamp}`
-    const regionId = regionRect ? `region-${stamp}` : undefined
-    const w = regionRect ? Math.max(0.2, regionRect.maxX - regionRect.minX) : 0
-    const h = regionRect ? Math.max(0.2, regionRect.maxY - regionRect.minY) : 0
-    const small = regionRect !== null && (w < 0.3 || h < 0.3)
-    const useRegion = regionRect !== null && !small
-
+    const regionId = draft.region ? `region-${stamp}` : undefined
     this.pushHistory()
     const field: Field =
-      pf.type === 'E'
-        ? { id: fieldId, kind: 'uniform', type: 'E', vector: pf.vector ?? { x: 0, y: FIELD_E }, regionId: useRegion ? regionId : undefined, enabled: true }
-        : { id: fieldId, kind: 'uniform', type: 'B', bz: pf.bz ?? FIELD_B, regionId: useRegion ? regionId : undefined, enabled: true }
-    const regions: Region[] = useRegion
+      draft.field.type === 'E'
+        ? { id: fieldId, kind: 'uniform', type: 'E', vector: { ...draft.field.vector }, regionId, enabled: true }
+        : { id: fieldId, kind: 'uniform', type: 'B', bz: draft.field.bz, regionId, enabled: true }
+    const regions: Region[] = draft.region
       ? [
           ...this.doc.regions,
           {
             id: regionId!,
-            shape: { type: 'rect', w, h },
-            transform: { x: (regionRect!.minX + regionRect!.maxX) / 2, y: (regionRect!.minY + regionRect!.maxY) / 2, angle: 0 },
-            label: pf.type === 'E' ? 'E 区' : 'B 区',
+            shape: { type: 'rect', w: draft.region.w, h: draft.region.h },
+            transform: { x: draft.region.x, y: draft.region.y, angle: 0 },
+            label: draft.region.label,
             role: 'field',
           },
         ]
       : this.doc.regions
     this.doc = { ...this.doc, fields: [...this.doc.fields, field], regions }
-    this.pendingField = null
-    this.fieldStroke = null
     this.rebuild()
     this.tool = 'select'
-    const name = pf.type === 'E' ? '电场' : pf.bz! > 0 ? '磁场 · 向外' : '磁场 · 向里'
+    this.selectedId = null
+    this.selectedConstraintId = null
+    this.selectedFieldId = fieldId
+    const name = kind === 'E' ? '电场' : '磁场'
     this.toast(
-      useRegion
-        ? `已画${name}，只作用在虚线框里`
+      draft.region
+        ? `已画${name}，只作用在虚线框里 · 左侧可调场强和方向`
         : `已画${name}（全场）· 场只作用于带电体，检查器里设 q`,
     )
   }
@@ -1580,6 +1645,7 @@ if (id) this.ensureBodyVisible(id)
       time: this.simA?.state.t ?? 0,
     })
     // 批注在最上层（模型之上、UI 之下）：老师写的东西不能被物体盖住
+    this.renderFieldSelection()
     drawInk(ctx, this.camera, this.ink)
     if (this.drag?.kind === 'draw') this.renderDrawPreview(this.drag)
     this.renderLinkPreview()
@@ -1590,7 +1656,6 @@ if (id) this.ensureBodyVisible(id)
     this.renderChartPanel()
     this.renderSidebar()
     if (this.selectedId || this.selectedConstraintId || this.showWorld) this.renderDock()
-    if (this.pendingField) this.renderFieldHint()
     if (this.chainOpen) this.renderChainPanel()
   }
 
@@ -1703,6 +1768,7 @@ if (id) this.ensureBodyVisible(id)
     const innerW = p.w - pad * 2
     const body = findBody(this.doc, this.selectedId ?? '')
     const con = this.doc.constraints.find((c) => c.id === this.selectedConstraintId)
+    const field = this.doc.fields.find((f): f is Extract<Field, { kind: 'uniform' }> => f.kind === 'uniform' && f.id === this.selectedFieldId)
 
     // 内容超出面板高度就滚动（窄屏尤其需要）
     const ctxClip = this.ctx
@@ -1728,6 +1794,8 @@ if (id) this.ensureBodyVisible(id)
     y += narrow ? 26 : 30
     const subtitle = body
       ? `${body.label ?? body.id} · ${body.kind === 'static' ? '固定' : body.kind === 'kinematic' ? '匀速' : '可动'}`
+      : field
+        ? `${field.type === 'E' ? '电场' : '磁场'} · ${field.regionId ? '限定区域' : '全场'}`
       : con
         ? `${con.type === 'rope' ? '绳' : con.type === 'spring' ? '弹簧' : con.type}约束`
         : (this.doc.meta.tags ?? []).slice(0, 2).join(' · ') || this.doc.meta.note?.slice(0, 22) || '点一下物体看参数'
@@ -1737,7 +1805,9 @@ if (id) this.ensureBodyVisible(id)
     // ---- 工具行 ----
     const toolSize = narrow ? 32 : 30
     const toolGap = 4
-    const perRow = Math.max(4, Math.floor((innerW + toolGap) / (toolSize + toolGap)))
+    // 8 个工具在窄面板里一行放不下：算出来的行数如果是「7+1」，就改成 4+4 对称排
+    const fit = Math.max(4, Math.floor((innerW + toolGap) / (toolSize + toolGap)))
+    const perRow = Math.ceil(TOOLS.length / Math.ceil(TOOLS.length / fit))
     TOOLS.forEach((tool, i) => {
       const col = i % perRow
       const row = Math.floor(i / perRow)
@@ -1759,7 +1829,7 @@ if (id) this.ensureBodyVisible(id)
     y += 12
 
     // ---- 参数 ----
-    this.ui.text(body ? '物体参数' : con ? '约束参数' : '参数', p.x + pad, y, {
+    this.ui.text(body ? '物体参数' : field ? '场的参数' : con ? '约束参数' : '参数', p.x + pad, y, {
       size: 10,
       weight: 700,
       color: THEME.inkFaint,
@@ -1767,6 +1837,7 @@ if (id) this.ensureBodyVisible(id)
     })
     y += 16
     if (body) y = this.renderBodyParams(p.x + pad, y, innerW, body)
+    else if (field) y = this.renderFieldParams(p.x + pad, y, innerW, field)
     else if (con) y = this.renderConstraintParams(p.x + pad, y, innerW, con)
     else y = this.renderSceneParams(p.x + pad, y, innerW)
 
@@ -1981,6 +2052,82 @@ if (id) this.ensureBodyVisible(id)
     return y
   }
 
+  /** 场的参数：E 是「大小 + 方向角」，B 是「大小 + 向外/向里」 */
+  private renderFieldParams(x: number, y0: number, w: number, field: Extract<Field, { kind: 'uniform' }>): number {
+    let y = y0
+    if (field.kind !== 'uniform') return y
+    if (field.type === 'E') {
+      const mag = Math.hypot(field.vector.x, field.vector.y)
+      const deg = (((Math.atan2(field.vector.y, field.vector.x) * 180) / Math.PI) + 360) % 360
+      this.ui.slider({ x, y, w, h: 48 }, {
+        id: 'field-mag',
+        label: '场强 E',
+        value: mag,
+        min: 0,
+        max: 120,
+        step: 1,
+        unit: ' N/C',
+        decimals: 0,
+        onScrubStart: () => this.pushHistory(),
+        onChange: (v) => this.setFieldMagnitude(field.id, v),
+      })
+      y += 56
+      this.ui.slider({ x, y, w, h: 48 }, {
+        id: 'field-angle',
+        label: '方向',
+        value: deg,
+        min: 0,
+        max: 360,
+        step: 5,
+        unit: '°',
+        decimals: 0,
+        hintLeft: '向右 0°',
+        hintRight: '向上 90°',
+        onScrubStart: () => this.pushHistory(),
+        onChange: (v) => this.setFieldAngle(field.id, v),
+      })
+      y += 66
+    } else if (field.type === 'B') {
+      this.ui.slider({ x, y, w, h: 48 }, {
+        id: 'field-mag',
+        label: '磁感应强度 B',
+        value: Math.abs(field.bz),
+        min: 0,
+        max: 6,
+        step: 0.1,
+        decimals: 1,
+        onScrubStart: () => this.pushHistory(),
+        onChange: (v) => this.setFieldMagnitude(field.id, v),
+      })
+      y += 56
+      this.ui.segmented({ x, y, w: Math.min(w, 220), h: 44 }, {
+        id: 'field-dir',
+        label: '方向',
+        options: [
+          { label: '向外 ·', value: 'out' },
+          { label: '向里 ×', value: 'in' },
+        ],
+        value: field.bz >= 0 ? 'out' : 'in',
+        onChange: (v) => {
+          this.pushHistory()
+          this.setFieldSign(field.id, v === 'out' ? 1 : -1)
+        },
+      })
+      y += 52
+    }
+    this.ui.pillButton({ x, y, w: 96, h: 24 }, '删除这块场', {
+      size: 9,
+      weight: 600,
+      onClick: () => this.removeField(field.id),
+    })
+    y += 30
+    if (!field.regionId) {
+      this.ui.text('这块场作用于整个场景', x, y + 6, { size: 9, color: THEME.inkFaint, maxWidth: w })
+      y += 18
+    }
+    return y
+  }
+
   private renderConstraintParams(x: number, y0: number, w: number, con: Constraint): number {
     let y = y0
     if (con.type === 'rope' || con.type === 'rod') {
@@ -2060,11 +2207,11 @@ if (id) this.ensureBodyVisible(id)
     this.tool = id
     this.selectedId = null
     this.selectedConstraintId = null
-    this.pendingField = null
-    this.fieldStroke = null
+    this.selectedFieldId = null
     if (id !== 'connect') this.linkFrom = null
     if (id === 'ink' && this.ink.length === 0) this.toast('批注：在模型上直接写；切到橡皮擦可以擦')
-    if (id === 'field') this.toast('画箭头 = 电场，点一下 = 磁场向外，画 × = 向里；再拖一块区域限定范围')
+    if (id === 'fieldE') this.toast('电场：按住拖一块区域；拖太小 = 全场。建完在左侧调场强和方向')
+    if (id === 'fieldB') this.toast('磁场：按住拖一块区域；建完在左侧调强度和向外/向里')
     if (id === 'pen') this.toast('画什么都行：圆、方块、直线会自动规整')
   }
 
@@ -2303,26 +2450,6 @@ if (id) this.ensureBodyVisible(id)
     })
   }
 
-  /** 场笔第二步的提示：别让用户猜「现在该干什么」 */
-  private renderFieldHint(): void {
-    const w = Math.min(this.width - 40, 380)
-    const r: Rect = { x: (this.width - w) / 2, y: 76 + this.insets.top, w, h: 34 }
-    this.ctx.save()
-    this.ctx.fillStyle = 'rgba(29,32,37,0.86)'
-    roundRect(this.ctx, r.x, r.y, r.w, r.h, 17)
-    this.ctx.fill()
-    this.ctx.restore()
-    const name = this.pendingField?.type === 'E' ? '电场' : '磁场'
-    this.ui.text(`${name}：拖一块区域限定范围 · 点一下 = 全场 · Esc 取消`, r.x + r.w / 2, r.y + r.h / 2, {
-      size: 10,
-      weight: 600,
-      color: THEME.white,
-      align: 'center',
-      maxWidth: r.w - 24,
-    })
-  }
-
-  /** 属性面板：选中物体/约束、或打开世界面板时，浮在舞台底部 */
   private renderDock(): void {
     const r = this.dockRect()
     this.ui.card(r, { radius: 16, stroke: THEME.panelLine, shadow: true })
@@ -3052,7 +3179,7 @@ const focus = this.focusBody(this.doc)
       ...this.doc,
       params: { ...this.doc.params, [type]: value },
       fields: this.doc.fields.map((f) =>
-        f.kind === 'uniform' && f.type === type
+        f.kind === 'uniform' && f.type === type && !f.regionId
           ? type === 'E'
             ? { ...f, vector: { x: value, y: 0 } }
             : { ...f, bz: value }
@@ -3303,35 +3430,23 @@ const focus = this.focusBody(this.doc)
     ctx.save()
     ctx.strokeStyle = THEME.accent
     ctx.lineWidth = 1.6
-    if (d.tool === 'field') {
+    if (d.tool === 'fieldE' || d.tool === 'fieldB') {
+      // 拖着的那块区域就是场的作用范围
       ctx.setLineDash([6, 5])
       const a = this.camera.project(d.start, 0)
       const b = this.camera.project(d.current, 0)
-      if (this.pendingField) {
-        // 第二笔：选区
-        ctx.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
-      } else {
-        // 第一笔：箭头 / 点
-        const len = Math.hypot(b.x - a.x, b.y - a.y)
-        if (len < 8) {
-          ctx.beginPath()
-          ctx.arc(a.x, a.y, 4, 0, Math.PI * 2)
-          ctx.stroke()
-        } else {
-          ctx.beginPath()
-          ctx.moveTo(a.x, a.y)
-          ctx.lineTo(b.x, b.y)
-          ctx.stroke()
-          const ang = Math.atan2(b.y - a.y, b.x - a.x)
-          ctx.setLineDash([])
-          ctx.beginPath()
-          ctx.moveTo(b.x, b.y)
-          ctx.lineTo(b.x - Math.cos(ang - 0.4) * 12, b.y - Math.sin(ang - 0.4) * 12)
-          ctx.moveTo(b.x, b.y)
-          ctx.lineTo(b.x - Math.cos(ang + 0.4) * 12, b.y - Math.sin(ang + 0.4) * 12)
-          ctx.stroke()
-        }
-      }
+      const x = Math.min(a.x, b.x)
+      const y = Math.min(a.y, b.y)
+      const w = Math.abs(b.x - a.x)
+      const h = Math.abs(b.y - a.y)
+      ctx.strokeRect(x, y, w, h)
+      ctx.setLineDash([])
+      ctx.font = font(10, 600)
+      ctx.fillStyle = THEME.accent
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'bottom'
+      const label = d.tool === 'fieldE' ? 'E 区' : 'B 区'
+      ctx.fillText(label, x + 2, y - 4)
       ctx.restore()
       return
     }

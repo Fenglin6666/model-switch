@@ -15,9 +15,9 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 3675 |
+| `packages/ui/src/app.ts` | 3790 |
 | `packages/ui/src/editor/layout.ts` | 93 |
-| `packages/ui/src/editor/drawing.ts` | 141 |
+| `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 365 |
 | `packages/ui/src/pages/library.ts` | 275 |
 | `packages/ui/src/pages/user.ts` | 173 |
@@ -25,7 +25,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 | `packages/ui/src/pages/shared.ts` | 57 |
 | `packages/ui/src/scene-bounds.ts` | 37 |
 | `packages/ui/src/widgets.ts` | 496 |
-| `packages/ui/src/icons.ts` | 391 |
+| `packages/ui/src/icons.ts` | 407 |
 | `packages/ui/src/chart.ts` | 194 |
 | `packages/core/src/presets.ts` | 1525 |
 | `packages/core/src/scene.ts` | 499 |
@@ -36,7 +36,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 | `packages/core/src/params.ts` | 70 |
 | `packages/core/src/criterion.ts` | 297 |
 | `packages/core/src/serialize.ts` | 251 |
-| `packages/render/src/renderer.ts` | 1240 |
+| `packages/render/src/renderer.ts` | 1244 |
 | `packages/render/src/camera.ts` | 253 |
 | `packages/physics/src/simulation.ts` | 841 |
 | `packages/physics/src/forces.ts` | 126 |

@@ -65,7 +65,7 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 | **删除找临界（v5.10）** | 侧栏入口、面板、`core/search.ts`、`core/threshold.ts`、`Scene.search` 全部移除；参数表独立成 `core/params.ts`（左侧滑杆仍要用） | `core/params.ts`；测试 136 → 127 |
 | **拆分（v5.9）** | `app.ts` 4772 → 3905 行：页面搬进 `ui/pages/`（`PagesHost` 窄接口），布局与画图逻辑提成**纯函数**（`ui/editor/layout.ts`、`ui/editor/drawing.ts`），新增 19 个 UI 单测 | `docs/REFACTOR-PLAN.md`；`tests/ui-layout.test.ts`、`tests/ui-drawing.test.ts` |
 | **编辑器布局（v5.8）** | 左参数面板（标题 / 7 个工具 / 参数滑杆 / 假设 chip / 重新开始 / 重置视图 / 读数卡 / 入口）+ 右舞台（状态药丸 + 播放键 + 分享·世界）+ 底部 v–t 图；白面板 + 冷灰舞台 + 紫色强调 | `panelRect()` / `stageRect()` / `chartRect()` / `renderSidebar()` / `renderStageChrome()` / `renderChartPanel()`；`viewPan()` 让相机对准舞台 |
-| **画图（v5.7）** | 没有组件库：笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；场笔＝箭头→电场、点→磁场向外、×→磁场向里，第二笔拖区域限定范围；选中可拖手柄缩放 | 左栏 7 个工具；`packages/core/src/recognize.ts`、`App.finishDraw` / `finishFieldStroke` / `commitField`；`docs/DRAWING.md` |
+| **画图（v5.7）** | 没有组件库：笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场），建完在左侧调场强/方向；选中可拖手柄缩放 | 左栏 8 个工具；`packages/core/src/recognize.ts`、`App.finishDraw` / `finishFieldStroke` / `commitField`；`docs/DRAWING.md` |
 | **假设可勾选（v5.4）** | 状态条「假设」变成可点 chip：滑块/小球/滚动、光滑/粗糙、固定/可移动、有无阻力；点一下 `layout()` 重算，分享串仍 `p1.` | 状态条；`packages/core/src/assumptions.ts` |
 | **视觉语法（v5.4）** | 静态地形 45° 剖面线（固定端）、磁场 ×/· 阵列 + 方向标签、电场箭头、带电 +/−；短边 <24px 不画装饰 | 渲染层自动；`renderer.ts` |
 
@@ -160,7 +160,7 @@ scripts            build-miniprogram / shots-build / mp-verify / validate
 | `packages/ui/src/app.ts` | UI 编排：场景页、输入、相机、历史、setter；页面/布局/画图逻辑已拆走 |
 | `packages/ui/src/pages/` | 题库页 / 题目详情 / 模型页 / 用户页（`PagesHost` 窄接口） |
 | `packages/ui/src/editor/layout.ts` | 布局纯函数（面板/舞台/图表/相机偏移/浮动面板） |
-| `packages/ui/src/editor/drawing.ts` | 画图纯函数（场笔手势、识别→Body、缩放） |
+| `packages/ui/src/editor/drawing.ts` | 画图纯函数（拖区域建场、识别→Body、缩放） |
 | `packages/ui/src/widgets.ts` | Canvas 控件（按钮/滑杆/命中区） |
 | `apps/miniprogram/.../pages/index/index.js` | 小程序薄壳 |
 
@@ -239,7 +239,7 @@ npm run build:mp             465.7 KB
 > `mp-verify` 在本机开发者工具负载高时**会偶发** `timeout waiting for automator response`：报错停在哪个用例是随机的（截图 / 重仿真步骤最容易撞上），重跑即过，不是断言失败。排查过：开发者工具渲染进程 CPU 时间已累计 39 小时，automator 的请求超时改不了。已做两处缓解：搜索后截图改成非致命、搜索用例把 `duration` 收到 1.5s + 步长 1/240。
 
 - 测试覆盖：投影往返、场景物理验收、吸附、判据、序列化/分享、真实高考题覆盖、库仑/引力/碰撞、气缸/滑轮、多过程/圆弧、E/B 场、多体/交叉场、链构建。
-- `scripts/shots-draw.mjs` 是画图验收（识别 / 场笔 / 手柄），`shots-bank.mjs` 是题库与详情页，`shots-ink.mjs` 是批注；三个都需要 dev server 在 5173。旧的 `shots-build.mjs`（形状工具）和 `shots-problem.mjs`（题目弹层）随工具改版删除了。
+- `scripts/shots-draw.mjs` 是画图验收（识别 / 电场磁场 / 手柄），`shots-bank.mjs` 是题库与详情页，`shots-ink.mjs` 是批注；三个都需要 dev server 在 5173。旧的 `shots-build.mjs`（形状工具）和 `shots-problem.mjs`（题目弹层）随工具改版删除了。
 - 小程序包在 `apps/miniprogram/miniprogram/utils/app.js`，改源码后必须重新 `npm run build:mp`。
 
 ---

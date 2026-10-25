@@ -1,45 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import {
-  FIELD_B,
-  FIELD_E,
-  bodyFromRecognized,
-  classifyFieldGesture,
-  fieldFromGesture,
-  scaleShape,
-  segmentsCross,
-} from '@ui/editor/drawing'
+import { FIELD_B, FIELD_E, bodyFromRecognized, fieldDraftFromDrag, scaleShape } from '@ui/editor/drawing'
 
 const at = (x: number, y: number) => ({ x, y })
 
-describe('场笔手势（纯函数）', () => {
-  const prev = { a: at(-0.2, -0.2), b: at(0.2, 0.2), t: 1000 }
-
-  it('点一下 = 磁场向外；长线 = 电场；短线 = 等第二笔', () => {
-    expect(classifyFieldGesture({ start: at(0, 0), current: at(0.05, 0.05), prev: null, now: 2000 })).toBe('dot')
-    expect(classifyFieldGesture({ start: at(0, 0), current: at(0, -1.2), prev: null, now: 2000 })).toBe('arrow')
-    expect(classifyFieldGesture({ start: at(-0.25, 0.25), current: at(0.25, -0.25), prev: null, now: 2000 })).toBe('pending')
+describe('电场 / 磁场：拖一块区域', () => {
+  it('拖出矩形 → 场长在这块区域里，中心是矩形中心', () => {
+    const d = fieldDraftFromDrag('E', at(-1, 0.5), at(1, 2.5))
+    expect(d.region).toMatchObject({ w: 2, h: 2, x: 0, y: 1.5, label: 'E 区' })
+    expect(d.field.type).toBe('E')
+    // 默认方向向下
+    expect(d.field.type === 'E' && d.field.vector).toEqual({ x: 0, y: -FIELD_E })
   })
 
-  it('两笔交叉且在 1.4 秒内 = ×（向里）', () => {
-    expect(classifyFieldGesture({ start: at(0.2, -0.2), current: at(-0.2, 0.2), prev, now: 1500 })).toBe('cross')
-    // 超时就不算
-    expect(classifyFieldGesture({ start: at(0.2, -0.2), current: at(-0.2, 0.2), prev, now: 3000 })).toBe('pending')
-    // 离得远、不交叉
-    expect(classifyFieldGesture({ start: at(0.6, -0.2), current: at(0.6, 0.2), prev, now: 1500 })).toBe('pending')
+  it('反向拖（右下 → 左上）也是同一块区域', () => {
+    const d = fieldDraftFromDrag('B', at(1, 2.5), at(-1, 0.5))
+    expect(d.region).toMatchObject({ w: 2, h: 2, x: 0, y: 1.5 })
   })
 
-  it('手势落成场：方向、正负都对', () => {
-    const arrow = fieldFromGesture('arrow', at(0, 2), at(0, 1))
-    expect(arrow.type).toBe('E')
-    expect(arrow.vector).toEqual({ x: 0, y: -FIELD_E })
-    expect(fieldFromGesture('dot', at(0, 0), at(0, 0)).bz).toBe(FIELD_B)
-    expect(fieldFromGesture('cross', at(0, 0), at(0, 0)).bz).toBe(-FIELD_B)
+  it('磁场默认向外，区域标签是 B 区', () => {
+    const d = fieldDraftFromDrag('B', at(0, 0), at(1, 1))
+    expect(d.field).toEqual({ type: 'B', bz: FIELD_B })
+    expect(d.region?.label).toBe('B 区')
   })
 
-  it('线段相交判定', () => {
-    expect(segmentsCross(at(-1, -1), at(1, 1), at(1, -1), at(-1, 1))).toBe(true)
-    expect(segmentsCross(at(-1, -1), at(1, -1), at(-1, 1), at(1, 1))).toBe(false)
-    expect(segmentsCross(at(-1, 0), at(1, 0), at(2, -1), at(2, 1))).toBe(false)
+  it('拖得太小 = 点了一下 → 全场（没有区域）', () => {
+    expect(fieldDraftFromDrag('E', at(0, 0), at(0.1, 0.1)).region).toBeNull()
+    expect(fieldDraftFromDrag('B', at(0, 0), at(0.5, 0.2)).region).toBeNull()
   })
 })
 
