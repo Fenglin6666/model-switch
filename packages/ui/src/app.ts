@@ -1931,7 +1931,7 @@ if (id) this.ensureBodyVisible(id)
     // ---- 头部 ----
     let y = p.y + (narrow ? 12 : 20) + this.panelScroll
     if (!narrow) {
-      this.ui.text('MODEL SWITCH', p.x + pad, y, {
+      this.ui.text('SLOGAN', p.x + pad, y, {
         size: 8,
         weight: 700,
         color: THEME.inkFaint,
@@ -2207,11 +2207,13 @@ if (id) this.ensureBodyVisible(id)
     })
     y += 34
     // 觉得这一坨好用 → 存成组件，以后任何场景都能插
-    this.ui.pillButton({ x, y, w, h: 28 }, '＋ 存为组件', {
+    const saveBtn: Rect = { x, y, w, h: 28 }
+    this.ui.pillButton(saveBtn, '＋ 存为组件', {
       size: 9.5,
       weight: 600,
       onClick: () => this.saveComponent(),
     })
+    this.ui.add({ id: 'comp:save', rect: saveBtn, cursor: 'pointer', onClick: () => this.saveComponent() })
     y += 34
     return y
   }

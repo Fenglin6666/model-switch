@@ -22,7 +22,7 @@ export function renderLibrary(h: PagesHost): void {
 
   const bar = h.pageBarRect()
   const narrow = W < 560
-  h.ui.text('MODEL SWITCH · 收藏夹', bar.x, bar.y + 12, {
+  h.ui.text('SLOGAN · 收藏夹', bar.x, bar.y + 12, {
     size: 8.5,
     weight: 700,
     color: THEME.inkFaint,

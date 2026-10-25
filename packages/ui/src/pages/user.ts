@@ -17,7 +17,7 @@ export function renderUser(h: PagesHost): void {
 
   const bar = h.pageBarRect()
   const narrow = W < 560
-  h.ui.text('MODEL SWITCH · 用户', bar.x, bar.y + 12, {
+  h.ui.text('SLOGAN · 用户', bar.x, bar.y + 12, {
     size: 8.5,
     weight: 700,
     color: THEME.inkFaint,
@@ -111,7 +111,7 @@ export function renderUser(h: PagesHost): void {
   y += 22
   h.ui.text('关于', card.x + pad, y, { size: 11, weight: 700, color: THEME.inkSoft })
   y += 20
-  h.ui.text('模型开关 · 把一道物理题变成能拨动的模型', card.x + pad, y, {
+  h.ui.text('Slogan · 把一道物理题变成能拨动的模型', card.x + pad, y, {
     size: 10,
     color: THEME.inkSoft,
     maxWidth: card.w - pad * 2,

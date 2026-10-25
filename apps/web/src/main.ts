@@ -5,7 +5,9 @@ const boot = document.getElementById('boot')
 const ctx = canvas.getContext('2d', { alpha: false })
 if (!ctx) throw new Error('Canvas 2D 不可用')
 
-const STORE_KEY = 'model-switch.library.v1'
+// 存储 key。改名前的旧 key 还要读一次，否则已经存下的建模/组件会「凭空消失」。
+const STORE_KEY = 'slogan.library.v1'
+const LEGACY_KEY = 'model-switch.library.v1'
 
 let dpr = Math.min(window.devicePixelRatio || 1, 3)
 let width = window.innerWidth
@@ -30,8 +32,16 @@ const app = new App({
     toast: (text) => console.log('[toast]', text),
     // 建模库 / 我导入的题目都存在浏览器本地，零后端
     storage: {
-      load: () => localStorage.getItem(STORE_KEY),
-      save: (value) => localStorage.setItem(STORE_KEY, value),
+      load: () => localStorage.getItem(STORE_KEY) ?? localStorage.getItem(LEGACY_KEY),
+      save: (value) => {
+        localStorage.setItem(STORE_KEY, value)
+        // 迁完就把旧 key 删掉，免得两份数据各自漂移
+        try {
+          localStorage.removeItem(LEGACY_KEY)
+        } catch {
+          /* 隐私模式下可能抛，忽略 */
+        }
+      },
     },
     askProblem: (done) => {
       void openTextDialog({

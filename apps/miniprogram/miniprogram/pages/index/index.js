@@ -2,7 +2,9 @@
 // 其余全部来自 utils/app.js（core + physics + render + ui 的打包产物）。
 const { App } = require('../../utils/app.js')
 
-const STORE_KEY = 'model-switch.library.v1'
+const STORE_KEY = 'slogan.library.v1'
+// 改名前的旧 key：读的时候兜一下，否则已经存下的建模/组件会「凭空消失」
+const LEGACY_KEY = 'model-switch.library.v1'
 
 Page({
   data: {},
@@ -18,7 +20,7 @@ Page({
       .exec((res) => {
         const info = res && res[0]
         if (!info || !info.node) {
-          console.error('[model-switch] 找不到 canvas 节点')
+          console.error('[slogan] 找不到 canvas 节点')
           return
         }
         const canvas = info.node
@@ -62,12 +64,20 @@ Page({
             storage: {
               load: () => {
                 try {
-                  return wx.getStorageSync(STORE_KEY) || null
+                  return wx.getStorageSync(STORE_KEY) || wx.getStorageSync(LEGACY_KEY) || null
                 } catch (e) {
                   return null
                 }
               },
-              save: (value) => wx.setStorageSync(STORE_KEY, value),
+              save: (value) => {
+                wx.setStorageSync(STORE_KEY, value)
+                // 迁完就删旧 key，免得两份数据各自漂移
+                try {
+                  wx.removeStorageSync(LEGACY_KEY)
+                } catch (e) {
+                  /* 忽略 */
+                }
+              },
             },
             askProblem: (done) =>
               this.askText(
@@ -155,14 +165,14 @@ Page({
   onShareAppMessage() {
     const token = this.shareToken || ''
     return {
-      title: '模型开关 · 把物理题变成能拨的模型',
+      title: 'Slogan · 把物理题变成能拨的模型',
       path: '/pages/index/index' + (token ? '?s=' + encodeURIComponent(token) : ''),
     }
   },
 
   onShareTimeline() {
     return {
-      title: '模型开关 · 一道题，一张能拨动的模型',
+      title: 'Slogan · 一道题，一张能拨动的模型',
       query: this.shareToken ? 's=' + encodeURIComponent(this.shareToken) : '',
     }
   },

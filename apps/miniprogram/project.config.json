@@ -1,5 +1,5 @@
 {
-  "description": "模型开关 · 高中物理建模（小程序壳）",
+  "description": "Slogan · 高中物理建模（小程序壳）",
   "packOptions": {
     "ignore": []
   },
@@ -14,7 +14,7 @@
   "compileType": "miniprogram",
   "libVersion": "3.0.0",
   "appid": "wxf5f318eb7cfbbe64",
-  "projectname": "model-switch",
+  "projectname": "slogan",
   "miniprogramRoot": "miniprogram/",
   "condition": {}
 }

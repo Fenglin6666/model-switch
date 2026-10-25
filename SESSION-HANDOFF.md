@@ -1,4 +1,4 @@
-# 模型开关 · 会话交接（2026-10-25，v5.10）
+# Slogan · 会话交接（2026-10-25，v5.10）
 
 > 新会话先读这一页，再读 `README.md`、`docs/DECISIONS.md` §22–30、`docs/DESIGN.md` §12–19。
 >
@@ -31,7 +31,7 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 
 ## 2. 产品定位（不要跑偏）
 
-「模型开关」是**高中物理的题目 → 建模工具**：把一道题变成一张形象、易懂、可拨动的物理建模，并且**生成物永远可手改**。
+「Slogan」是**高中物理的题目 → 建模工具**：把一道题变成一张形象、易懂、可拨动的物理建模，并且**生成物永远可手改**。
 
 - **主路径是题目**：粘贴文字 → 生成建模。图片识别、拍照是已规划的入口（弹层里占位、标「即将支持」），不是现在的能力。
 - 生成的是**初稿**：AI / 规则都不可能次次对，所以拖拽、检查器、世界面板、组件库、多过程链始终可用。**手动修改建模是兜底，也是产品底线。**
@@ -67,6 +67,7 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 | **编辑器布局（v5.8）** | 左参数面板（标题 / 7 个工具 / 参数滑杆 / 假设 chip / 重新开始 / 重置视图 / 读数卡 / 入口）+ 右舞台（状态药丸 + 播放键 + 分享·世界）+ 底部 v–t 图；白面板 + 冷灰舞台 + 紫色强调 | `panelRect()` / `stageRect()` / `chartRect()` / `renderSidebar()` / `renderStageChrome()` / `renderChartPanel()`；`viewPan()` 让相机对准舞台 |
 | **画图（v5.7）** | 没有预置组件库：笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场），建完在左侧调场强/方向；选中可拖手柄缩放 | 左栏 8 个工具；`packages/core/src/recognize.ts`、`App.finishDraw` / `finishFieldStroke` / `commitField`；`docs/DRAWING.md` |
 | **组件（v5.12）** | 组件由使用产生：选中物体 →「＋ 存为组件」，从选中体顺着约束把整段抓出来（点球 A 得「球A + 球B + 绳」）；「组件」面板插入到舞台中央，id 换新前缀、约束两端跟着换；16 物体 / 40 组件上限 | `packages/core/src/components.ts`、`App.saveComponent` / `insertSavedComponent` / `renderComponentsPanel`；`docs/COMPONENTS.md`；18 个单测 + 3 项截图验收 |
+| **改名 Slogan（v5.13）** | 产品名从「模型开关 / MODEL SWITCH」改为 **Slogan**：左面板品牌字、四个页面页眉、Web `<title>`、小程序分享标题、用户页「关于」、`package.json` / `project.config.json` 的 name；**存储 key 改名带迁移**（旧 `model-switch.library.v1` 仍能读，保存后清掉） | `apps/web/src/main.ts`、`apps/miniprogram/.../index.js` 的 `LEGACY_KEY`；验收脚本有「改名迁移」一条 |
 | **假设可勾选（v5.4）** | 「假设」变成可点 chip（v5.8 起从状态条搬进左侧面板）：滑块/小球/滚动、光滑/粗糙、固定/可移动、有无阻力；点一下 `layout()` 重算，分享串仍 `p1.` | 左侧面板 `assume:*`；`packages/core/src/assumptions.ts` |
 | **视觉语法（v5.4）** | 静态地形 45° 剖面线（固定端）、磁场 ×/· 阵列 + 方向标签、电场箭头、带电 +/−；短边 <24px 不画装饰 | 渲染层自动；`renderer.ts` |
 
@@ -83,6 +84,23 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 **不存**观测器 / 判据 / 场与区域——那些是场景级的，跟着组件走只会制造困惑。**组件不带 `layout()`**：它是一段现成的模型拷贝，不是参数化模板（带 layout 就变回预置场景了）。
 
 边界：坏模型也会被存下来（组件库不是质量背书）、跨设备不通用（跟建模库一起在 localStorage）、不去重。细节见 [docs/COMPONENTS.md](docs/COMPONENTS.md)。
+
+### 改名 Slogan（v5.13）
+
+产品名从「模型开关 / MODEL SWITCH」改成 **Slogan**（仓库目录本来就是 `D:\Slogan`，这次是把**对外露出的名字**统一过去）。
+
+改到的地方：左面板品牌字（`SLOGAN`，等宽小字）、四个页面页眉（`SLOGAN · 题库 / 收藏夹 / 用户`）、Web `<title>`、小程序 `onShareAppMessage` / `onShareTimeline` 标题、用户页「关于」、`package.json` 与 `project.config.json` 的 name / description、sitemap、小程序报错前缀。
+
+**唯一有风险的是本地存储 key**。库存在 `slogan.library.v1`，但老用户机器上还写着 `model-switch.library.v1`——直接改名等于把他们的建模库和组件「清空」。所以两个壳都留了 `LEGACY_KEY`：
+
+```
+读：新 key 没有 → 读旧 key
+写：写新 key → 删旧 key（迁完不留两份，免得各自漂移）
+```
+
+`scripts/shots-bank.mjs` 有一条「改名迁移」断言锁这个行为，别在清理旧代码时把 `LEGACY_KEY` 删掉。
+
+同时补了 `scripts/shots-editor.mjs`：README 的 240/241 原来是手截的，改版后一直挂着旧界面（还写着 MODEL SWITCH、7 个工具）。现在这两张有归属，跑一遍就是当前界面。
 
 ### 多过程链面板（v5.0）
 
@@ -231,12 +249,13 @@ constraint:
 npm test                     145 passed
 npm run typecheck            通过
 npm run doc:check            文档行数与代码一致（28 个文件）
+node scripts/shots-editor.mjs 3/3   # 编辑器截图（README 的 240/241）+ 8 工具 + 「存为组件」入口
 node scripts/shots-draw.mjs  25/25  # 识别 5 类 / 吸附 / 缩放手柄 / 场两按钮 + 区域 / 物理 / 无组件按钮 / 存组件 → 面板 → 插入
 node scripts/shots-ink.mjs   9/9   # 批注：进入批注态、画一笔、世界坐标、缩放保留、清空、橡皮、换场景清空
-node scripts/shots-bank.mjs  15/15  # 三栏 / 点题进详情 / 详情生成 + 初稿标记 / 打开已建 / 暂不支持 / 用户页清空 / 持久化 / 手机尺寸
+node scripts/shots-bank.mjs  16/16  # 三栏 / 点题进详情 / 详情生成 + 初稿标记 / 打开已建 / 暂不支持 / 用户页清空 / 持久化 / 手机尺寸 / 改名迁移
 node scripts/mp-verify.mjs   15/15  # 小程序端含点题进详情、详情生成、建模库、假设 chip
-npm run build                453.8 KB / gzip 124.5 KB
-npm run build:mp             466.5 KB
+npm run build                454.0 KB / gzip 124.6 KB
+npm run build:mp             466.7 KB
 ```
 
 > `mp-verify` 在本机开发者工具负载高时**会偶发** `timeout waiting for automator response`：报错停在哪个用例是随机的（截图 / 重仿真步骤最容易撞上），重跑即过，不是断言失败。排查过：开发者工具渲染进程 CPU 时间已累计 39 小时，automator 的请求超时改不了。已做两处缓解：搜索后截图改成非致命、搜索用例把 `duration` 收到 1.5s + 步长 1/240。
@@ -362,15 +381,16 @@ npm run build:mp             466.5 KB
 ## 10. 新会话第一句话（可直接粘贴）
 
 ```
-项目在 D:/Slogan（模型开关）。先读 SESSION-HANDOFF.md，再读 README、docs/DRAWING.md、docs/COMPONENTS.md。
+项目在 D:/Slogan（产品名 Slogan）。先读 SESSION-HANDOFF.md，再读 README、docs/DRAWING.md、docs/COMPONENTS.md。
 
-现状：v5.12。底部三栏：用户 / 题库 / 模型。
+现状：v5.13。底部三栏：用户 / 题库 / 模型。
 - 题库：点一张题 → 题目详情（完整题干）→ 按「生成建模」→ 模型进「模型」页（收藏夹，自建文件夹，本地持久化）。
 - 画布：**没有预置组件库**。笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
 - 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。组件由使用产生，不是我们穷举的清单。
-145 个测试；小程序包 465 KB。假设 chip、视觉语法、画图识别、用户组件都在。
-app.ts 已从 4772 行拆到 3929：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），剩余拆分计划见 docs/REFACTOR-PLAN.md。
+145 个测试；小程序包 467 KB。假设 chip、视觉语法、画图识别、用户组件都在。
+app.ts 已从 4772 行拆到 3946：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），剩余拆分计划见 docs/REFACTOR-PLAN.md。
 明确否掉的：条件表单、空白画布、首页示例卡片墙、预置组件库按钮、形状调色板——别加回来。
+改名注意：本地存储 key 是 `slogan.library.v1`，旧 `model-switch.library.v1` 只作为迁移兜底（LEGACY_KEY），**别删**，删了老用户数据就读不出来。
 
 下一步优先级：
 1) 找老师试：题库 → 详情 → 生成 → 在画布上画几笔 → 存进文件夹 → 存一个常用组件，全程计时；
@@ -414,7 +434,8 @@ app.ts 已从 4772 行拆到 3929：页面在 ui/pages/，布局/画图逻辑是
 ## 12. 当前工作区状态
 
 - 根目录无临时补丁脚本（`scripts/_*` 已清理）。
-- 最新截图（v5.12）：`233-component`（组件面板 + 插入结果）、`240-editor`、`241-editor-selected`、`242-editor-draw`、`244-user`；`220`–`232` 仍有效。
+- 最新截图（v5.13）：`240-editor` / `241-editor-selected`（由 `shots-editor.mjs` 生成，品牌字已是 SLOGAN）、`233-component`、`242-editor-draw`、`244-user`；`220`–`232` 仍有效。
+- v5.13 改动面（改名）：`app.ts` 品牌字、`ui/pages/*` 三处页眉、`apps/web/index.html` 标题、`apps/web/src/main.ts` 与小程序 `index.js` 的 `STORE_KEY` / `LEGACY_KEY`、`package.json` / `package-lock.json` / `project.config.json` / `sitemap.json`；新增 `scripts/shots-editor.mjs`；`shots-bank.mjs` 加「改名迁移」一条（15 → 16）；README 的布局图与编辑器段落重写（原来是 v1 的选择/矩形工具）。
 - v5.12 改动面（组件）：新增 `packages/core/src/components.ts`、`tests/components.test.ts`（18 项）、`docs/COMPONENTS.md`；`library.ts` 加 `components` 段（40 上限、容错解析）；`app.ts` 加 `saveComponent` / `insertSavedComponent` / `renderComponentsPanel` / `renameSavedComponent`，检查器加「＋ 存为组件」，侧栏加「组件」；`shots-draw.mjs` 22 → 25 项；`scripts/doc-facts.mjs` 盯的文件 27 → 28 个。
 - v5.9 改动面（拆分）：新增 `packages/ui/src/pages/{host,shared,bank,library,user,index}.ts`、`packages/ui/src/editor/{layout,drawing}.ts`、`packages/ui/src/scene-bounds.ts`、`tests/ui-{layout,drawing}.test.ts`、`docs/REFACTOR-PLAN.md`、`scripts/doc-facts.mjs`（`npm run doc:check`）；`app.ts` 只留转发与编排；`docs/CODEMAP.md` 重写为「事实块 + 阅读路线」。
 - 目标已完成，新会话可直接按第 10 节开新目标；不需要 resume 旧 goal。

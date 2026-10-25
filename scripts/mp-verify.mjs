@@ -51,9 +51,10 @@ try {
   await mp.evaluate(() => {
     const a = getCurrentPages().slice(-1)[0].app
     try {
+      wx.removeStorageSync('slogan.library.v1')
       wx.removeStorageSync('model-switch.library.v1')
     } catch (e) {}
-    a.library = { version: 1, folders: [], models: [], problems: [] }
+    a.library = { version: 1, folders: [], models: [], problems: [], components: [] }
     a.currentModelId = null
     a.toBank()
   })
@@ -200,7 +201,7 @@ try {
     a.frame(0, 0)
     let stored = 0
     try {
-      stored = String(wx.getStorageSync('model-switch.library.v1') || '').length
+      stored = String(wx.getStorageSync('slogan.library.v1') || '').length
     } catch (e) {}
     return {
       mode,

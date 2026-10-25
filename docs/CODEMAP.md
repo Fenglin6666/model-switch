@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 3921 |
+| `packages/ui/src/app.ts` | 3923 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 365 |
@@ -41,8 +41,8 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 | `packages/render/src/camera.ts` | 253 |
 | `packages/physics/src/simulation.ts` | 841 |
 | `packages/physics/src/forces.ts` | 126 |
-| `apps/web/src/main.ts` | 256 |
-| `apps/miniprogram/miniprogram/pages/index/index.js` | 169 |
+| `apps/web/src/main.ts` | 266 |
+| `apps/miniprogram/miniprogram/pages/index/index.js` | 179 |
 
 > 这张表由 `node scripts/doc-facts.mjs --write` 生成，`node scripts/doc-facts.mjs` 校验。
 > **别手改数字**——手改一定会漂。
@@ -134,8 +134,9 @@ D:\Slogan
 │  ├─ doc-facts.mjs             文档行数校验（npm run doc:check）
 │  ├─ build-miniprogram.mjs     打包小程序
 │  ├─ mp-verify.mjs             小程序自动化验证（15 项）
+│  ├─ shots-editor.mjs          编辑器截图（3 项：README 的 240/241）
 │  ├─ shots-draw.mjs            画图 + 组件验收（25 项）
-│  ├─ shots-bank.mjs            题库/详情/建模库/用户页验收（14 项）
+│  ├─ shots-bank.mjs            题库/详情/建模库/用户页 + 改名迁移（16 项）
 │  └─ shots-ink.mjs             批注验收（9 项）
 └─ screenshots/                 桌面端 + 小程序截图（编号越大越新）
 ```
@@ -168,4 +169,4 @@ D:\Slogan
 - 小程序：开发者工具控制台里 `getCurrentPages()[0].app` 同理。
 - 物理单步：`app.simA.step()`，然后看 `app.simA.state.bodies`。
 - 命中区：`app.ui.hits.map(h => h.id)` —— 自动化脚本就是靠 id 点的（`tool:*` / `assume:*` / `bank:*` / `problem:*` / `model:*`）。
-- 截图：`node scripts/shots-draw.mjs` / `shots-bank.mjs` / `shots-ink.mjs`（Web）、`node scripts/mp-verify.mjs`（小程序，需 9420 端口）。
+- 截图：`node scripts/shots-editor.mjs` / `shots-draw.mjs` / `shots-bank.mjs` / `shots-ink.mjs`（Web）、`node scripts/mp-verify.mjs`（小程序，需 9420 端口）。

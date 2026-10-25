@@ -53,7 +53,10 @@ const state = () =>
   })
 
 // 0. 干净起点
-await page.evaluate(() => localStorage.removeItem('model-switch.library.v1'))
+await page.evaluate(() => {
+  localStorage.removeItem('slogan.library.v1')
+  localStorage.removeItem('model-switch.library.v1')
+})
 await page.reload()
 await page.waitForFunction(() => !!window.app)
 await wait(400)
@@ -227,6 +230,52 @@ check(
 )
 await shot('227-bank-mobile')
 await shot('228-detail-mobile')
+
+// 9. 改名迁移：旧 key（model-switch.library.v1）里的数据要能读出来，保存后旧 key 清掉。
+//    这条锁的是「改产品名不许丢用户数据」——很容易在清理旧代码时被顺手删掉。
+await page.setViewportSize({ width: 1280, height: 840 })
+await page.evaluate(() => {
+  localStorage.removeItem('slogan.library.v1')
+  localStorage.setItem(
+    'model-switch.library.v1',
+    JSON.stringify({
+      version: 1,
+      folders: [],
+      models: [
+        {
+          id: 'm-legacy',
+          title: '旧 key 里的模型',
+          folderId: 'unsorted',
+          createdAt: 1,
+          updatedAt: 1,
+          scene: window.app.doc,
+        },
+      ],
+      problems: [],
+      components: [],
+    }),
+  )
+})
+await page.reload()
+await page.waitForFunction(() => !!window.app)
+await wait(400)
+const migrated = await page.evaluate(() => {
+  const got = {
+    title: window.app.library.models[0]?.title,
+    models: window.app.library.models.length,
+  }
+  window.app.persist()
+  return {
+    ...got,
+    oldGone: localStorage.getItem('model-switch.library.v1') === null,
+    newLen: (localStorage.getItem('slogan.library.v1') || '').length,
+  }
+})
+check(
+  '改名迁移：旧 key 的建模库能读出来，保存后旧 key 清掉',
+  migrated.models === 1 && migrated.title === '旧 key 里的模型' && migrated.oldGone && migrated.newLen > 100,
+  JSON.stringify(migrated),
+)
 
 const failed = results.filter((r) => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} 通过`)

@@ -1,9 +1,9 @@
 {
-  "name": "model-switch",
+  "name": "slogan",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "模型开关 · 把高中物理题变成形象、可拨动、可手改的物理建模",
+  "description": "Slogan · 把高中物理题变成形象、可拨动、可手改的物理建模",
   "workspaces": [
     "packages/*",
     "apps/*"
