@@ -95,6 +95,8 @@ await shot('221-problem-detail')
 await tap('problem:generate')
 const generated = await state()
 check('详情页点生成 → 进画布并入库', generated.mode === 'scene' && generated.models === 1, JSON.stringify(generated))
+const draft = await page.evaluate(() => ({ fromProblem: window.app.fromProblem === true }))
+check('生成的场景带「题目初稿」标记（舞台上标可改）', draft.fromProblem, JSON.stringify(draft))
 await shot('222-generated')
 
 // 4. 回题库再点同一道题：详情变成「打开模型」

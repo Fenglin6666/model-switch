@@ -9,6 +9,7 @@
  */
 import type { Scene } from './scene'
 import type { BankProblem } from './bank'
+import type { SavedComponent } from './components'
 import { normalizeScene } from './serialize'
 
 export const UNSORTED = 'unsorted'
@@ -37,10 +38,35 @@ export type Library = {
   models: LibraryModel[]
   /** 用户导入的题目（题库「我的题目」分类） */
   problems: BankProblem[]
+  /** 用户自己「存」出来的组件（从场景里抽的一段模型） */
+  components: SavedComponent[]
 }
 
 export function emptyLibrary(): Library {
-  return { version: 1, folders: [], models: [], problems: [] }
+  return { version: 1, folders: [], models: [], problems: [], components: [] }
+}
+
+export const MAX_COMPONENTS = 40
+
+/** 存一个组件；重名不合并（同一个组合可能有不同参数，让用户自己删） */
+export function addComponent(
+  lib: Library,
+  comp: SavedComponent,
+): { library: Library; error?: string } {
+  if (lib.components.length >= MAX_COMPONENTS) {
+    return { library: lib, error: `组件库最多 ${MAX_COMPONENTS} 个，先删几个` }
+  }
+  return { library: { ...lib, components: [comp, ...lib.components] } }
+}
+
+export function renameComponent(lib: Library, id: string, name: string): Library {
+  const clean = name.trim().slice(0, 16)
+  if (!clean) return lib
+  return { ...lib, components: lib.components.map((c) => (c.id === id ? { ...c, name: clean } : c)) }
+}
+
+export function deleteComponent(lib: Library, id: string): Library {
+  return { ...lib, components: lib.components.filter((c) => c.id !== id) }
 }
 
 /** 导入题目；同一段题干只存一次（重复导入返回已有那条） */
@@ -192,11 +218,17 @@ export function parseLibrary(raw: string | null | undefined): Library {
             !!p && typeof p.id === 'string' && typeof p.text === 'string' && typeof p.title === 'string',
         )
       : []
+    const components = Array.isArray((parsed as Partial<Library>).components)
+      ? ((parsed as Partial<Library>).components as SavedComponent[]).filter(
+          (c) => !!c && typeof c.id === 'string' && typeof c.name === 'string' && Array.isArray(c.bodies) && c.bodies.length > 0,
+        )
+      : []
     return {
       version: 1,
       folders,
       models: models.map((m) => (known.has(m.folderId) ? m : { ...m, folderId: UNSORTED })),
       problems,
+      components,
     }
   } catch {
     return emptyLibrary()

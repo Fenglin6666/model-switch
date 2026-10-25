@@ -4,7 +4,7 @@
 
 ```bash
 npm run dev               # Web: http://127.0.0.1:5173
-npm test                  # 117 个单测，最快了解行为
+npm test                  # 145 个单测，最快了解行为
 npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑）
 ```
 
@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 3790 |
+| `packages/ui/src/app.ts` | 3921 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 365 |
@@ -32,7 +32,8 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 | `packages/core/src/problem.ts` | 279 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
-| `packages/core/src/library.ts` | 215 |
+| `packages/core/src/library.ts` | 247 |
+| `packages/core/src/components.ts` | 212 |
 | `packages/core/src/params.ts` | 70 |
 | `packages/core/src/criterion.ts` | 297 |
 | `packages/core/src/serialize.ts` | 251 |
@@ -63,8 +64,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 
 - [`tests/acceptance.test.ts`](../tests/acceptance.test.ts)：半圆槽等高、动量、圆轨道临界值 vs √(5gR)，全是可执行断言。
 - [`docs/DECISIONS.md`](DECISIONS.md) §1：推导 + 实测数字。
-- [`packages/core/src/criterion.ts`](../packages/core/src/criterion.ts)：6 种判据怎么从事件流里判。
-- [`packages/core/src/criterion.ts`](../packages/core/src/criterion.ts)：6 种判据；判据只看事件流，不判对错。
+- [`packages/core/src/criterion.ts`](../packages/core/src/criterion.ts)：6 种判据怎么从事件流里判；判据只看事件流，不判对错。
 
 ### C. 想改视觉 / 交互
 
@@ -74,6 +74,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
   - 场景页：`renderSceneMode` → `renderStageChrome` → `renderChartPanel` → `renderSidebar` → `renderDock`
   - 三个页：`renderBank` / `renderProblemDetail` / `renderLibrary` / `renderUser`
   - 画图：`finishDraw` / `finishFieldStroke` / `commitField` / `renderDrawPreview`
+  - 组件：`saveComponent` / `insertSavedComponent` / `renderComponentsPanel`
   - 输入：`pointerDown` / `pointerMove` / `pointerUp` / `key`
   - 拆分计划见 [`REFACTOR-PLAN.md`](REFACTOR-PLAN.md)
 - [`packages/ui/src/widgets.ts`](../packages/ui/src/widgets.ts)：滑杆/开关/分段控件，命中区登记也在这里。
@@ -86,6 +87,7 @@ D:\Slogan
 ├─ README.md                    产品与运行方式
 ├─ docs/
 │  ├─ DRAWING.md                画图：识别阈值、场笔手势、物理映射
+│  ├─ COMPONENTS.md             组件：从使用中沉淀（存/插/边界）
 │  ├─ REFACTOR-PLAN.md          app.ts 拆分计划与进度
 │  ├─ EXECUTION-PLAN.md         产品路线图（含方向调整记录）
 │  ├─ DECISIONS.md              关键取舍、被推翻的结论
@@ -98,7 +100,8 @@ D:\Slogan
 │  │  ├─ problem.ts             题干 → Scene 的规则解析（v0）
 │  │  ├─ recognize.ts           手绘一笔 → 圆/矩形/多边形/直线/折线
 │  │  ├─ bank.ts                题库：分类 + 15 道题 + 每条的 expect
-│  │  ├─ library.ts             建模库：文件夹 / 模型 / 我的题目 + 持久化
+│  │  ├─ library.ts             建模库：文件夹 / 模型 / 我的题目 / 组件 + 持久化
+│  │  ├─ components.ts          选中集 → 组件（抽取 / 插入 / id 重映射）
 │  │  ├─ params.ts             场景参数的可调区间（左侧滑杆的数据源）
 │  │  ├─ assumptions.ts         假设 → 可点 chip（只写 params）
 │  │  ├─ criterion.ts           判据（detach/reach/escape/coincide/collide/conserve）
@@ -126,12 +129,12 @@ D:\Slogan
 │  └─ miniprogram/miniprogram/
 │     ├─ pages/index/index.js   ★ 小程序壳（canvas / 触摸 / 原生 modal / 本地存储）
 │     └─ utils/app.js           构建产物，别手改
-├─ tests/                       19 个文件 / 117 个断言
+├─ tests/                       + packages/*/src/*.test.ts：21 个文件 / 145 个断言
 ├─ scripts/
 │  ├─ doc-facts.mjs             文档行数校验（npm run doc:check）
 │  ├─ build-miniprogram.mjs     打包小程序
-│  ├─ mp-verify.mjs             小程序自动化验证（16 项）
-│  ├─ shots-draw.mjs            画图验收（19 项）
+│  ├─ mp-verify.mjs             小程序自动化验证（15 项）
+│  ├─ shots-draw.mjs            画图 + 组件验收（25 项）
 │  ├─ shots-bank.mjs            题库/详情/建模库/用户页验收（14 项）
 │  └─ shots-ink.mjs             批注验收（9 项）
 └─ screenshots/                 桌面端 + 小程序截图（编号越大越新）
@@ -153,6 +156,7 @@ D:\Slogan
 | 改物体属性面板 | `ui/app.ts` 的 `renderBodySheet` / `setBodyAngle` / `setBodyFriction` / `setBodyVelocity` |
 | 改题库页 / 详情页 | `ui/app.ts` 的 `renderBank` / `renderProblemCard` / `renderProblemDetail` |
 | 改建模库 | `core/library.ts` + `ui/app.ts` 的 `renderLibrary` / `renderMoveSheet` |
+| 改组件抽取 / 插入 | `core/components.ts` + `ui/app.ts` 的 `saveComponent` / `insertSavedComponent` |
 | 加小程序能力 | `apps/miniprogram/miniprogram/pages/index/index.js` |
 | 改吸附规则 | `core/snap.ts` |
 | 双击分类 | `ui/app.ts` 的 `cycleClassification` / `classifyBody` |

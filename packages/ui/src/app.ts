@@ -32,6 +32,7 @@ import { applySnap, findSnap } from '@core/snap'
 import { describeRecognized, recognizeStroke } from '@core/recognize'
 import { decodeShare, encodeShare } from '@core/serialize'
 import { parseProblem } from '@core/problem'
+import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
 import { BANK_PROBLEMS, bankCategoryName, bankStats, makeMineProblem, visibleCategories, type BankProblem } from '@core/bank'
 import {
@@ -39,8 +40,11 @@ import {
   addModel,
   addProblem,
   countIn,
+  addComponent,
   clearModels,
   clearProblems,
+  deleteComponent,
+  renameComponent,
   createFolder,
   deleteModel,
   deleteProblem,
@@ -234,6 +238,8 @@ export class App {
   private panelDrag: { lastY: number } | null = null
   /** 选中的场（拖出来的那块）；选中时左侧面板显示场强/方向 */
   selectedFieldId: string | null = null
+  /** 组件库面板（从场景里存下来的组件） */
+  private componentsOpen = false
 
   constructor(opts: AppOptions) {
     this.ctx = opts.ctx
@@ -621,6 +627,129 @@ if (id) this.ensureBodyVisible(id)
         },
       },
     }
+  }
+
+  // ---- 用户自建组件：从场景里「存」，再插到别处 ----
+
+  /**
+   * 把「点中的这一坨」存成组件。
+   * 画布是单选，所以从选中的物体出发沿约束找整段（点球 A 会带上绳和球 B）。
+   */
+  saveComponent(): void {
+    const seed = this.selectedId
+    if (!seed) {
+      this.toast('先选中画布上的一个物体，再存为组件')
+      return
+    }
+    const ids = componentSelection(this.doc, seed)
+    const comp = extractComponent(this.doc, ids)
+    if (!comp) {
+      this.toast('没抽出来东西')
+      return
+    }
+    const added = addComponent(this.library, comp)
+    if (added.error) {
+      this.toast(added.error)
+      return
+    }
+    this.library = added.library
+    this.persist()
+    this.componentsOpen = true
+    this.toast(`已存为组件「${comp.name}」（${comp.bodies.length} 个物体）· 以后在「组件」里插入`)
+  }
+
+  /** 把组件插到舞台中央；插完选中它，方便马上拖 */
+  insertSavedComponent(id: string): void {
+    const comp = this.library.components.find((c) => c.id === id)
+    if (!comp) return
+    const st = this.stageRect()
+    const at = this.camera.unproject(st.x + st.w / 2, st.y + st.h * 0.4)
+    const prefix = `k${Date.now().toString(36)}-`
+    const inst = instantiateComponent(comp, { x: at.x, y: Math.max(0.4, at.y) }, { prefix })
+    this.pushHistory()
+    this.doc = {
+      ...this.doc,
+      bodies: [...this.doc.bodies, ...inst.bodies],
+      constraints: [...this.doc.constraints, ...inst.constraints],
+      gases: [...this.doc.gases, ...inst.gases],
+      world: inst.interactions
+        ? { ...this.doc.world, interactions: { ...this.doc.world.interactions, ...inst.interactions } }
+        : this.doc.world,
+    }
+    this.rebuild()
+    this.selectedId = inst.ids[0] ?? null
+    this.selectedFieldId = null
+    this.toast(`已插入「${comp.name}」· 直接拖或改参数`)
+  }
+
+  private renderComponentsPanel(): void {
+    const st = this.stageRect()
+    const w = Math.min(st.w - 24, 520)
+    const rows = Math.max(1, Math.min(this.library.components.length, 8))
+    const h = Math.min(st.h - 100, 92 + rows * 52 + 16)
+    const r: Rect = { x: st.x + (st.w - w) / 2, y: 76 + this.insets.top, w, h }
+    this.ui.card(r, { radius: 16, fill: THEME.card, stroke: THEME.panelLine, shadow: true })
+    this.ui.add({ id: 'comp:card', rect: r })
+    this.ui.text('组件', r.x + 18, r.y + 24, { size: 13, weight: 700 })
+    this.ui.text(`${this.library.components.length} 个 · 选中画布上的东西就能再存一个`, r.x + 56, r.y + 24, {
+      size: 9,
+      color: THEME.inkFaint,
+      maxWidth: r.w - 120,
+    })
+    this.ui.iconButton({ x: r.x + r.w - 42, y: r.y + 8, w: 30, h: 30 }, 'close', {
+      onClick: () => {
+        this.componentsOpen = false
+      },
+    })
+
+    if (!this.library.components.length) {
+      this.ui.text('还没有组件', r.x + 18, r.y + 62, { size: 11.5, weight: 600, color: THEME.inkSoft })
+      this.ui.text('选中画布上的一个物体 → 左侧「＋ 存为组件」', r.x + 18, r.y + 82, {
+        size: 9.5,
+        color: THEME.inkFaint,
+      })
+      return
+    }
+
+    let y = r.y + 46
+    for (const comp of this.library.components.slice(0, 8)) {
+      const row: Rect = { x: r.x + 10, y, w: r.w - 20, h: 46 }
+      this.ui.text(comp.name, row.x + 8, row.y + 16, { size: 11.5, weight: 650, maxWidth: row.w - 170 })
+      this.ui.text(`${comp.bodies.length} 个物体 · ${comp.constraints.length} 个约束`, row.x + 8, row.y + 33, {
+        size: 9,
+        color: THEME.inkFaint,
+      })
+      const btn = (label: string, x: number, w2: number, fn: () => void, active = false) =>
+        this.ui.pillButton({ x, y: row.y + 9, w: w2, h: 28 }, label, { size: 9.5, weight: 600, active, onClick: fn })
+      btn('插入', row.x + row.w - 128, 56, () => this.insertSavedComponent(comp.id), true)
+      btn('改名', row.x + row.w - 68, 46, () => this.renameSavedComponent(comp))
+      btn('删', row.x + row.w - 22, 22, () => {
+        this.library = deleteComponent(this.library, comp.id)
+        this.persist()
+        this.toast(`已删除组件「${comp.name}」`)
+      })
+      y += 52
+    }
+    // 面板只画 8 行（再多就超出舞台了）。剩下的说清楚，别让人以为存丢了。
+    const rest = this.library.components.length - 8
+    if (rest > 0) {
+      this.ui.text(`还有 ${rest} 个没显示（面板放不下）· 先删几个不用的`, r.x + 18, y + 8, {
+        size: 9,
+        color: THEME.inkFaint,
+      })
+    }
+  }
+
+  private renameSavedComponent(comp: SavedComponent): void {
+    if (!this.host.prompt) {
+      this.toast('这个壳没有输入框')
+      return
+    }
+    this.host.prompt({ title: '给组件改名', placeholder: comp.name, value: comp.name }, (name) => {
+      if (!name) return
+      this.library = renameComponent(this.library, comp.id, name)
+      this.persist()
+    })
   }
 
   /** 点在哪块场区里（场区是虚线框，点框内就算选中） */
@@ -1296,6 +1425,10 @@ if (id) this.ensureBodyVisible(id)
   }
 
   key(key: string, ctrl = false, shift = false): void {
+    if (key === 'Escape' && this.componentsOpen) {
+      this.componentsOpen = false
+      return
+    }
     if (key === 'Escape' && this.confirm) {
       this.confirm = null
       return
@@ -1656,6 +1789,7 @@ if (id) this.ensureBodyVisible(id)
     this.renderChartPanel()
     this.renderSidebar()
     if (this.selectedId || this.selectedConstraintId || this.showWorld) this.renderDock()
+    if (this.componentsOpen) this.renderComponentsPanel()
     if (this.chainOpen) this.renderChainPanel()
   }
 
@@ -1691,6 +1825,23 @@ if (id) this.ensureBodyVisible(id)
       weight: 650,
       color: this.playing ? THEME.ok : THEME.inkSoft,
     })
+
+    // 「题目初稿」标记：生成的模型不是终点，得让人知道它随时能改。
+    // 只画不点——真正的修改入口是左侧检查器，别在这里多一个按钮抢注意力。
+    if (this.fromProblem) {
+      const tag = '题目初稿 · 可改'
+      ctx.save()
+      ctx.font = font(10, 600)
+      const tw = ctx.measureText(tag).width + 20
+      ctx.restore()
+      const box: Rect = { x: pill.x + pill.w + 8, y: pill.y + 3, w: tw, h: 22 }
+      ctx.save()
+      ctx.fillStyle = 'rgba(124,58,237,0.08)'
+      roundRect(ctx, box.x, box.y, box.w, box.h, 11)
+      ctx.fill()
+      ctx.restore()
+      this.ui.text(tag, box.x + 10, box.y + 11.5, { size: 10, weight: 600, color: THEME.accent })
+    }
 
     // 右上角：分享 / 世界
     const right = st.x + st.w - 14
@@ -1906,6 +2057,12 @@ if (id) this.ensureBodyVisible(id)
         this.selectedId = null
         this.selectedConstraintId = null
       }],
+      ['组件', () => {
+        this.componentsOpen = !this.componentsOpen
+        this.selectedId = null
+        this.selectedFieldId = null
+        this.showWorld = false
+      }],
       ['题目', () => this.askGenerate()],
       ['返回', () => this.toLibrary()],
     ]
@@ -2047,6 +2204,13 @@ if (id) this.ensureBodyVisible(id)
       size: 9.5,
       weight: 600,
       onClick: () => this.deleteSelected(),
+    })
+    y += 34
+    // 觉得这一坨好用 → 存成组件，以后任何场景都能插
+    this.ui.pillButton({ x, y, w, h: 28 }, '＋ 存为组件', {
+      size: 9.5,
+      weight: 600,
+      onClick: () => this.saveComponent(),
     })
     y += 34
     return y
@@ -3576,6 +3740,9 @@ const focus = this.focusBody(this.doc)
     this.library = added.library
     this.persist()
     this.openModel(added.model!.id)
+    // openModel → loadScene 会把 fromProblem 清掉，所以要在它之后置位：
+    // 这份场景确实是「题目生成的初稿」，舞台上得标出来。
+    this.fromProblem = true
     this.toast(`已生成「${problem?.title ?? r.scene.meta.title}」· 已存进建模库`)
     return { ok: true, message: `已生成「${r.scene.meta.title}」` }
   }
@@ -3637,43 +3804,7 @@ const focus = this.focusBody(this.doc)
     this.toast('已删除')
   }
 
-  // ---- 题库页 ----
-
-
-
-
-
-  // ---- 建模库页 ----
-
-
-
-
-
-  /** 按字符宽度折行（中文按 1em 估，够用） */
-
-
-
-
-  /** 移动模型：选文件夹（像把歌拖进歌单） */
-
-
-  // -------------------------------------------------------------------------
-  // 题目详情（先看完整题干，再决定建不建模）
-  // -------------------------------------------------------------------------
-
-
-
-
-
-  // -------------------------------------------------------------------------
-  // 用户页（本地数据 / 清空 / 关于）
-  // -------------------------------------------------------------------------
-
-
-
-
-
-
+  // ---- 题库 / 建模库 / 详情 / 用户页的实现在 pages/，见下方转发 ----
 
   // -------------------------------------------------------------------------
   // 分享 / 提示

@@ -334,6 +334,73 @@ const physics = await page.evaluate(() => {
 check('画出来的球受重力会掉（有物理性质）', physics.fell, `${physics.y0.toFixed(2)} → ${physics.y1.toFixed(2)}`)
 await shot('232-drawn-scene')
 
+// 14.5 用户自建组件：选中一坨 → 存 → 插到别处
+await reset()
+const compFlow = await page.evaluate(() => {
+  const a = window.app
+  // 摆两个球 + 一根绳
+  const mk = (id, x, label, color) => ({
+    id,
+    kind: 'particle',
+    role: 'object',
+    shape: { type: 'circle', r: 0.15 },
+    transform: { x, y: 2.2, angle: 0 },
+    material: 'metal',
+    mass: 0.2,
+    appearance: { color, depth: 0.1 },
+    label,
+  })
+  a.doc = { ...a.doc, bodies: [...a.doc.bodies, mk('u1', -1.2, '球 A', '#d95a39'), mk('u2', -0.2, '球 B', '#3f6fd0')] }
+  a.doc = {
+    ...a.doc,
+    constraints: [
+      ...a.doc.constraints,
+      { id: 'ur', type: 'rope', a: { bodyId: 'u1', local: { x: 0, y: 0 } }, b: { bodyId: 'u2', local: { x: 0, y: 0 } }, length: 1 },
+    ],
+  }
+  a.rebuild()
+  a.selectBody('u1')
+  a.frame(0, 0)
+
+  a.saveComponent()
+  const saved = a.library.components[0]
+  const beforeBodies = a.doc.bodies.length
+  const beforeCons = a.doc.constraints.length
+  a.insertSavedComponent(saved.id)
+  const afterBodies = a.doc.bodies.length
+  const afterCons = a.doc.constraints.length
+  const insertedIds = a.doc.bodies.slice(-2).map((b) => b.id)
+  const ropeOk = a.doc.constraints.some((c) => c.type === 'rope' && c.a && 'bodyId' in c.a && insertedIds.includes(c.a.bodyId))
+  return {
+    name: saved?.name,
+    savedBodies: saved?.bodies.length,
+    savedCons: saved?.constraints.length,
+    panelOpen: a.componentsOpen,
+    beforeBodies,
+    afterBodies,
+    beforeCons,
+    afterCons,
+    insertedIds,
+    ropeOk,
+    selected: a.selectedId,
+  }
+})
+check(
+  '选中一坨 → 存为组件（点球 A 带上绳和球 B）',
+  compFlow.name === '球 A + 球 B' && compFlow.savedBodies === 2 && compFlow.savedCons === 1,
+  JSON.stringify({ name: compFlow.name, b: compFlow.savedBodies, c: compFlow.savedCons }),
+)
+check('存完自动打开组件面板', compFlow.panelOpen === true)
+check(
+  '插入组件 → 物体/约束都多了一份，id 是新的，绳接在新球上',
+  compFlow.afterBodies === compFlow.beforeBodies + 2 &&
+    compFlow.afterCons === compFlow.beforeCons + 1 &&
+    compFlow.insertedIds.every((id) => !['u1', 'u2'].includes(id)) &&
+    compFlow.ropeOk,
+  JSON.stringify({ b: `${compFlow.beforeBodies}→${compFlow.afterBodies}`, ids: compFlow.insertedIds, rope: compFlow.ropeOk }),
+)
+await shot('233-component')
+
 // 15. 连接工具：画两个球 → 连成绳（工具没变，确认还能用）
 await reset()
 await stroke(circlePts(-0.8, 2.2, 0.16))

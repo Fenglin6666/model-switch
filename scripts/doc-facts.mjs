@@ -32,6 +32,7 @@ const FILES = [
   'packages/core/src/recognize.ts',
   'packages/core/src/bank.ts',
   'packages/core/src/library.ts',
+  'packages/core/src/components.ts',
   'packages/core/src/params.ts',
   'packages/core/src/criterion.ts',
   'packages/core/src/serialize.ts',

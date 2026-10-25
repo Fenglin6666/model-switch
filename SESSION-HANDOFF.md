@@ -17,7 +17,7 @@
 cd D:\Slogan
 npm install          # 已装过就跳过
 npm run dev          # Web: http://127.0.0.1:5173
-npm test             # 127 passed
+npm test             # 145 passed
 npm run typecheck
 npm run build        # Web 产物
 npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.js
@@ -47,12 +47,12 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 
 | 领域 | 实现 | 入口 |
 |---|---|---|
-| 题目 → 建模 | `parseProblem`（规则生成链路 v0，8 类模型）；生成物是普通 Scene，状态条标「题目初稿 · 可改」 | 选择页「题目 → 建模」、状态条「题目」；弹层里有 文字 / 图片识别 / 拍照 三入口，后两者是占位「即将支持」 |
-| 点电荷/库仑 | `world.interactions.coulomb`，成对库仑力 + 库仑势能 | 示例「点电荷」；组件「点电荷」；世界面板开关 |
-| 天体/万有引力 | `world.interactions.gravityNBody`，N 体引力 + 引力势能 | 示例「卫星轨迹」；组件「天体」；世界面板开关 |
-| 气缸/理想气体 | `Scene.gases` + `prismatic` + P=nRT/V，气压与外界压强差作用在活塞 | 示例「气缸」；组件「气缸」；世界面板 T |
-| 碰撞/动量/能量 | 接触 + 恢复系数 + 动量/动能判据 | 示例「两球碰撞」「多体碰撞」；组件「碰撞球」 |
-| 滑轮/连接体 | `pulley` 约束（Planck PulleyJoint，地面锚点/绳长/比值） | 示例「滑轮」；组件「滑轮」 |
+| 题目 → 建模 | `parseProblem`（规则生成链路 v0，8 类模型）；生成物是普通 Scene，舞台状态药丸旁标「题目初稿 · 可改」（`fromProblem`） | 题库首页「生成建模」；弹层里有 文字 / 图片识别 / 拍照 三入口，后两者是占位「即将支持」 |
+| 点电荷/库仑 | `world.interactions.coulomb`，成对库仑力 + 库仑势能 | 示例「点电荷」；世界面板开关 |
+| 天体/万有引力 | `world.interactions.gravityNBody`，N 体引力 + 引力势能 | 示例「卫星轨迹」；世界面板开关 |
+| 气缸/理想气体 | `Scene.gases` + `prismatic` + P=nRT/V，气压与外界压强差作用在活塞 | 示例「气缸」；世界面板 T |
+| 碰撞/动量/能量 | 接触 + 恢复系数 + 动量/动能判据 | 示例「两球碰撞」「多体碰撞」 |
+| 滑轮/连接体 | `pulley` 约束（Planck PulleyJoint，地面锚点/绳长/比值） | 示例「滑轮」；连接工具连绳后「存为组件」 |
 | 多过程组合 | 斜面→水平→上坡；斜面→水平→圆弧（13 段光滑折线 + 接触） | 示例两条；左栏「多过程链」手动拼 |
 | 电场/磁场 | 匀强 E/B + 电荷 + 洛伦兹力；世界面板可加场 | 示例「电场中的带电粒子」「正交电磁场」；世界面板加场 |
 | 力学基础 | 斜面/半圆槽/圆轨道/圆弧/平抛/板块/弹簧/单摆；绳/杆/弹簧/铰链/轨道约束 | 示例 + 形状工具 + 连接工具 |
@@ -63,23 +63,26 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 | **用户页（v5.6）** | 本地数据统计（建模/文件夹/我的题目/占用）、清空建模库、清空我的题目（都先弹确认）、关于 | `App.renderUser`；`clearModels` / `clearProblems` |
 | **建模库（v5.5）** | 收藏夹：文件夹自建自分类、`⋯` 移动、本地持久化、60 个上限、离开画布写回同一条 | 底部「建模库」；`packages/core/src/library.ts` |
 | **删除找临界（v5.10）** | 侧栏入口、面板、`core/search.ts`、`core/threshold.ts`、`Scene.search` 全部移除；参数表独立成 `core/params.ts`（左侧滑杆仍要用） | `core/params.ts`；测试 136 → 127 |
-| **拆分（v5.9）** | `app.ts` 4772 → 3905 行：页面搬进 `ui/pages/`（`PagesHost` 窄接口），布局与画图逻辑提成**纯函数**（`ui/editor/layout.ts`、`ui/editor/drawing.ts`），新增 19 个 UI 单测 | `docs/REFACTOR-PLAN.md`；`tests/ui-layout.test.ts`、`tests/ui-drawing.test.ts` |
+| **拆分（v5.9）** | `app.ts` 4772 → 3905 行（v5.9 当时；当前行数见 `docs/CODEMAP.md` 事实块）：页面搬进 `ui/pages/`（`PagesHost` 窄接口），布局与画图逻辑提成**纯函数**（`ui/editor/layout.ts`、`ui/editor/drawing.ts`），新增 19 个 UI 单测 | `docs/REFACTOR-PLAN.md`；`tests/ui-layout.test.ts`、`tests/ui-drawing.test.ts` |
 | **编辑器布局（v5.8）** | 左参数面板（标题 / 7 个工具 / 参数滑杆 / 假设 chip / 重新开始 / 重置视图 / 读数卡 / 入口）+ 右舞台（状态药丸 + 播放键 + 分享·世界）+ 底部 v–t 图；白面板 + 冷灰舞台 + 紫色强调 | `panelRect()` / `stageRect()` / `chartRect()` / `renderSidebar()` / `renderStageChrome()` / `renderChartPanel()`；`viewPan()` 让相机对准舞台 |
-| **画图（v5.7）** | 没有组件库：笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场），建完在左侧调场强/方向；选中可拖手柄缩放 | 左栏 8 个工具；`packages/core/src/recognize.ts`、`App.finishDraw` / `finishFieldStroke` / `commitField`；`docs/DRAWING.md` |
-| **假设可勾选（v5.4）** | 状态条「假设」变成可点 chip：滑块/小球/滚动、光滑/粗糙、固定/可移动、有无阻力；点一下 `layout()` 重算，分享串仍 `p1.` | 状态条；`packages/core/src/assumptions.ts` |
+| **画图（v5.7）** | 没有预置组件库：笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场），建完在左侧调场强/方向；选中可拖手柄缩放 | 左栏 8 个工具；`packages/core/src/recognize.ts`、`App.finishDraw` / `finishFieldStroke` / `commitField`；`docs/DRAWING.md` |
+| **组件（v5.11）** | 组件由使用产生：选中物体 →「＋ 存为组件」，从选中体顺着约束把整段抓出来（点球 A 得「球A + 球B + 绳」）；「组件」面板插入到舞台中央，id 换新前缀、约束两端跟着换；16 物体 / 40 组件上限 | `packages/core/src/components.ts`、`App.saveComponent` / `insertSavedComponent` / `renderComponentsPanel`；`docs/COMPONENTS.md`；18 个单测 + 3 项截图验收 |
+| **假设可勾选（v5.4）** | 「假设」变成可点 chip（v5.8 起从状态条搬进左侧面板）：滑块/小球/滚动、光滑/粗糙、固定/可移动、有无阻力；点一下 `layout()` 重算，分享串仍 `p1.` | 左侧面板 `assume:*`；`packages/core/src/assumptions.ts` |
 | **视觉语法（v5.4）** | 静态地形 45° 剖面线（固定端）、磁场 ×/· 阵列 + 方向标签、电场箭头、带电 +/−；短边 <24px 不画装饰 | 渲染层自动；`renderer.ts` |
 
-### 手动画板组件库（v5.1）
+### 组件：从使用中沉淀（v5.11）
 
-左栏「+」打开 5 个组件，点一下放在当前视野中央：
+**没有预置组件库**（v5.1 那套「点电荷/天体/碰撞球/气缸/滑轮」的加号面板已经删了）。组件是用户自己存出来的：
 
-1. **点电荷**：q=+1 的带电小球，自动开库仑力。
-2. **天体**：M=1000 的静态大质量体，自动开 N 体引力。
-3. **碰撞球**：rubber 小球，自动加 rubber–rubber 完全弹性接触对。
-4. **气缸**：气缸（static）+ 活塞（dynamic）+ `GasSystem` + `prismatic`。
-5. **滑轮**：两端质量 + `pulley` 约束（Atwood 组件组）。
+1. 在画布上搭出想要的一坨（比如两个球 + 连接工具连绳）；
+2. 选中其中任意一个物体 → 左侧「＋ 存为组件」；
+3. 系统从选中体出发**顺着约束把整段找出来**（`componentSelection`，上限 16 个物体），抽取成 `SavedComponent`：`bodies` + 只保留「两端都在选区内」的 `constraints` + `gases` + `world.interactions` 快照 + `plane`；
+4. 抽取时物体**重新居中到选区质心**，插到哪就是哪；
+5. 左侧「组件」→「插入」，落到舞台中央，id 重映射成 `k<时间戳>-N`，约束 id `k<时间戳>-cN`，两端跟着换名；插完自动选中第一个插入体。
 
-插入的都是普通 body/constraint/gas，后续继续可编辑。组件放在视野中央；如果被底部面板挡住，拖/缩放即可。
+**不存**观测器 / 判据 / 场与区域——那些是场景级的，跟着组件走只会制造困惑。**组件不带 `layout()`**：它是一段现成的模型拷贝，不是参数化模板（带 layout 就变回预置场景了）。
+
+边界：坏模型也会被存下来（组件库不是质量背书）、跨设备不通用（跟建模库一起在 localStorage）、不去重。细节见 [docs/COMPONENTS.md](docs/COMPONENTS.md)。
 
 ### 多过程链面板（v5.0）
 
@@ -207,14 +210,14 @@ constraint:
 - **左参数面板（v5.8）**：标题 + 副标题 → 7 个工具（选择/手绘/场/连接/批注/橡皮/平移，命中区 `tool:*`）→ 参数滑杆（未选中时是场景参数，选中后是物体参数）→ 假设 chips（`assume:*`）→ 重新开始 / 重置视图 → 读数卡（速度/时间/位移 + 判据）→ 世界/题目/返回。窄屏时面板变底部抽屉，内容可上下拖。
 - **右舞台**：左上 播放键 + 状态药丸，右上 分享 / 世界；底部是 v–t 图面板（有 chart 观测器才有）。属性面板（选中物体/约束、世界面板）浮在舞台底部。
 - **相机**：视口仍是整窗，但 `viewPan()` 把内容偏到舞台中心——所以指针坐标不用做任何换算。
-- **底部**：状态条 / 组件检查器 / 约束检查器 / 世界面板；选中时才出现抽屉。
+- **底部**：物体检查器 / 约束检查器 / 世界面板 / 组件面板 / 多过程链面板；选中或打开时才出现抽屉（没有常驻状态条了，状态在舞台左上药丸）。
 - **世界面板**：重力 g；库仑力/ N 体引力开关；加匀强电场/磁场 + E/B 滑杆；气体 T；空气阻力。
 - **检查器**：质量、电荷 q、摩擦、初速度、半径/几何、角度、材质、删除、添加外力。
 - **观测卡**：v–t 图、能量条；顶部图表键默认收起。
-- **假设 chip**：状态条上「假设」后面的 chip 可点，点一下循环到下一个取值；窄屏（手机/小程序）状态条只留这条交互。
+- **假设 chip**：左侧面板「假设」后面一排 chip（`assume:*`），点一下循环到下一个取值、`layout()` 重算几何；窄屏面板变底部抽屉，chip 跟着进去。
 - **分享/题目**：顶栏分享；「题目」打开生成弹层（Web）/ 原生输入弹窗（小程序）；生成失败在弹层里直接转到空白画布。
 - **多过程链面板**：阶段行、增删、参数滑杆、插入画布。
-- **组件面板**：点电荷/天体/碰撞球/气缸/滑轮。
+- **组件面板**：用户存下来的组件（名字 + 「N 个物体 · M 个约束」+ 插入/改名/删）。不是预置清单。
 
 移动端：界面按 canvas 宽度自适应；链/组件面板在窄屏可能偏挤，是已知待打磨项。
 
@@ -225,21 +228,21 @@ constraint:
 最近一次：
 
 ```
-npm test                     127 passed
+npm test                     145 passed
 npm run typecheck            通过
-npm run doc:check            文档行数与代码一致
-node scripts/shots-draw.mjs  19/19  # 识别 5 类 / 吸附 / 缩放手柄 / 场三手势 + 区域 / 物理 / 无组件按钮
+npm run doc:check            文档行数与代码一致（28 个文件）
+node scripts/shots-draw.mjs  25/25  # 识别 5 类 / 吸附 / 缩放手柄 / 场两按钮 + 区域 / 物理 / 无组件按钮 / 存组件 → 面板 → 插入
 node scripts/shots-ink.mjs   9/9   # 批注：进入批注态、画一笔、世界坐标、缩放保留、清空、橡皮、换场景清空
-node scripts/shots-bank.mjs  14/14  # 三栏 / 点题进详情 / 详情生成 / 打开已建 / 暂不支持 / 用户页清空 / 持久化 / 手机尺寸
-node scripts/mp-verify.mjs   16 项   # 小程序端含点题进详情、详情生成、建模库、假设 chip
-npm run build                452.4 KB / gzip 124.1 KB
-npm run build:mp             465.7 KB
+node scripts/shots-bank.mjs  15/15  # 三栏 / 点题进详情 / 详情生成 + 初稿标记 / 打开已建 / 暂不支持 / 用户页清空 / 持久化 / 手机尺寸
+node scripts/mp-verify.mjs   15/15  # 小程序端含点题进详情、详情生成、建模库、假设 chip
+npm run build                453.8 KB / gzip 124.5 KB
+npm run build:mp             466.5 KB
 ```
 
 > `mp-verify` 在本机开发者工具负载高时**会偶发** `timeout waiting for automator response`：报错停在哪个用例是随机的（截图 / 重仿真步骤最容易撞上），重跑即过，不是断言失败。排查过：开发者工具渲染进程 CPU 时间已累计 39 小时，automator 的请求超时改不了。已做两处缓解：搜索后截图改成非致命、搜索用例把 `duration` 收到 1.5s + 步长 1/240。
 
 - 测试覆盖：投影往返、场景物理验收、吸附、判据、序列化/分享、真实高考题覆盖、库仑/引力/碰撞、气缸/滑轮、多过程/圆弧、E/B 场、多体/交叉场、链构建。
-- `scripts/shots-draw.mjs` 是画图验收（识别 / 电场磁场 / 手柄），`shots-bank.mjs` 是题库与详情页，`shots-ink.mjs` 是批注；三个都需要 dev server 在 5173。旧的 `shots-build.mjs`（形状工具）和 `shots-problem.mjs`（题目弹层）随工具改版删除了。
+- `scripts/shots-draw.mjs` 是画图 + 组件验收（识别 / 电场磁场 / 手柄 / 存组件→插入），`shots-bank.mjs` 是题库与详情页，`shots-ink.mjs` 是批注；三个都需要 dev server 在 5173。旧的 `shots-build.mjs`（形状工具）和 `shots-problem.mjs`（题目弹层）随工具改版删除了。
 - 小程序包在 `apps/miniprogram/miniprogram/utils/app.js`，改源码后必须重新 `npm run build:mp`。
 
 ---
@@ -359,20 +362,21 @@ npm run build:mp             465.7 KB
 ## 10. 新会话第一句话（可直接粘贴）
 
 ```
-项目在 D:/Slogan（模型开关）。先读 SESSION-HANDOFF.md，再读 README、docs/DRAWING.md。
+项目在 D:/Slogan（模型开关）。先读 SESSION-HANDOFF.md，再读 README、docs/DRAWING.md、docs/COMPONENTS.md。
 
-现状：v5.9。底部三栏：用户 / 题库 / 模型。
+现状：v5.11。底部三栏：用户 / 题库 / 模型。
 - 题库：点一张题 → 题目详情（完整题干）→ 按「生成建模」→ 模型进「模型」页（收藏夹，自建文件夹，本地持久化）。
-- 画布：**没有组件库**。笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；场笔＝画箭头→电场、点一下→磁场向外、画×→磁场向里，第二笔拖区域限定范围；选中可拖右下角手柄缩放。
-127 个测试；小程序包 465 KB。假设 chip、视觉语法、画图识别都在。
-app.ts 已从 4772 行拆到 3905：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），剩余拆分计划见 docs/REFACTOR-PLAN.md。
-明确否掉的：条件表单、空白画布、首页示例卡片墙、组件库按钮、形状调色板——别加回来。
+- 画布：**没有预置组件库**。笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
+- 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。组件由使用产生，不是我们穷举的清单。
+145 个测试；小程序包 465 KB。假设 chip、视觉语法、画图识别、用户组件都在。
+app.ts 已从 4772 行拆到 3929：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），剩余拆分计划见 docs/REFACTOR-PLAN.md。
+明确否掉的：条件表单、空白画布、首页示例卡片墙、预置组件库按钮、形状调色板——别加回来。
 
 下一步优先级：
-1) 找老师试：题库 → 详情 → 生成 → 在画布上画几笔 → 存进文件夹，全程计时；
-2) 手绘识别调优（旋转矩形？多笔画组合？见 docs/DRAWING.md §6）；
-3) 模型页缺口：重命名、导出/导入 .json、容量提示；
-4) 约束退化（θ→0、k→∞、m→∞，参数连续变化，不做开关）；
+1) 找老师试：题库 → 详情 → 生成 → 在画布上画几笔 → 存进文件夹 → 存一个常用组件，全程计时；
+2) 组件导出/导入 .json（跨设备 + 可分享，和建模库是同一件事）；
+3) 手绘识别调优（旋转矩形？多笔画组合？见 docs/DRAWING.md §6）；
+4) 模型页缺口：重命名、导出/导入 .json、容量提示；
 5) 阶段三 3.1 精确圆弧验证（0.5 天，先花半天省掉 8 天）。
 
 先跑 npm test / npm run typecheck / npm run dev 确认基线，再动代码。不要大改架构。
@@ -388,6 +392,9 @@ app.ts 已从 4772 行拆到 3905：页面在 ui/pages/，布局/画图逻辑是
 - `docs/DESIGN.md`：§11 板块；§12–18 通用交互/热学/多过程/多体/圆弧/拼链/组件面板；§19 题目优先的入口层级。
 - `docs/GAOKAO.md`：真实题实测与“能建/不能建”。
 - `docs/CODEMAP.md`：代码地图。
+- `docs/DRAWING.md`：画图（识别阈值 / 场笔拖区域 / 物理映射）。
+- `docs/COMPONENTS.md`：组件（由使用产生：存什么 / 怎么插 / 边界 / 以后怎么长）。
+- `docs/REFACTOR-PLAN.md`：`app.ts` 拆分进度与剩余计划。
 - `docs/EXECUTION-PLAN.md`：**产品执行方案 v1**（三阶段路线图 + 优先级依据 + 五个待验证假设）。
 - `docs/GAOKAO-20Y-CLASSIFICATION.md`：2006–2026 真题（304 卷 / 4462 题）收集与四轴分类，含可建模性分布。
 - `docs/COMPONENT-SYSTEM.md`：组件体系（四类角色 + 参数 schema + 退化关系 + 优先级）。
@@ -407,6 +414,7 @@ app.ts 已从 4772 行拆到 3905：页面在 ui/pages/，布局/画图逻辑是
 ## 12. 当前工作区状态
 
 - 根目录无临时补丁脚本（`scripts/_*` 已清理）。
-- 最新截图（v5.9）：`240-editor`、`241-editor-selected`、`242-editor-draw`、`244-user`；`220`–`232` 仍有效。
+- 最新截图（v5.11）：`233-component`（组件面板 + 插入结果）、`240-editor`、`241-editor-selected`、`242-editor-draw`、`244-user`；`220`–`232` 仍有效。
+- v5.11 改动面（组件）：新增 `packages/core/src/components.ts`、`tests/components.test.ts`（18 项）、`docs/COMPONENTS.md`；`library.ts` 加 `components` 段（40 上限、容错解析）；`app.ts` 加 `saveComponent` / `insertSavedComponent` / `renderComponentsPanel` / `renameSavedComponent`，检查器加「＋ 存为组件」，侧栏加「组件」；`shots-draw.mjs` 22 → 25 项；`scripts/doc-facts.mjs` 盯的文件 27 → 28 个。
 - v5.9 改动面（拆分）：新增 `packages/ui/src/pages/{host,shared,bank,library,user,index}.ts`、`packages/ui/src/editor/{layout,drawing}.ts`、`packages/ui/src/scene-bounds.ts`、`tests/ui-{layout,drawing}.test.ts`、`docs/REFACTOR-PLAN.md`、`scripts/doc-facts.mjs`（`npm run doc:check`）；`app.ts` 只留转发与编排；`docs/CODEMAP.md` 重写为「事实块 + 阅读路线」。
 - 目标已完成，新会话可直接按第 10 节开新目标；不需要 resume 旧 goal。
