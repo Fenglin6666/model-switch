@@ -1,15 +1,10 @@
 /**
- * 临界判据通用化：任意场景 + 任意参数 + 任意判据 → 找翻转点。
+ * 场景参数的可调区间（题干用词：θ、μ、v₀、R…）。
  *
- * 现状（v5.3）只有 `scene.search`：每个场景手写一条「参数区间 + 判据」，
- * 于是 46% 含临界结构的计算题只有最窄的一条路能走。
- *
- * 这里做的事：
- *  - 给常见参数一份「可扫区间」表（题干用词，不暴露引擎字段）；
- *  - 从任意场景里推出「哪些参数能扫、哪些判据能看」；
- *  - 生成一条与旧 `scene.search` 完全同构的 spec，UI 与搜索链路不用改。
+ * 只列「连续变化有意义」的参数；0/1 开关（fixed/roll/drag/model/ball）故意不进来。
+ * 左侧参数面板按这张表生成滑杆——**参数名必须来自题干**，不能暴露引擎字段。
  */
-import type { Criterion, Scene } from './scene'
+import type { Scene } from './scene'
 
 export type ParamMeta = {
   key: string
@@ -56,81 +51,20 @@ export const PARAM_META: Record<string, ParamMeta> = {
   v: { key: 'v', label: '速度 v', unit: 'm/s', min: 0, max: 8, step: 0.2, decimals: 1 },
 }
 
-/** 建议优先扫的参数：临界题里最高频的几个（v₀ → θ → μ → R） */
+/** 建议优先显示的参数：临界题里最高频的几个（v₀ → θ → μ → R） */
 const PRIORITY = ['v0', 'theta', 'mu', 'R', 'h', 'k', 'L', 'l', 'E', 'B', 'mass', 'm']
 
-export function thresholdParams(scene: Scene): ParamMeta[] {
+/** 当前场景里可调的参数（按「常见程度」排序，面板第一眼看到最该调的那个） */
+export function sceneParams(scene: Scene): ParamMeta[] {
   const out: ParamMeta[] = []
   for (const key of Object.keys(scene.params ?? {})) {
     const meta = PARAM_META[key]
     if (meta) out.push(meta)
   }
-  // 按「临界题常见程度」排序，滑杆面板第一眼看到的就是最该扫的那个
   out.sort((a, b) => {
     const ia = PRIORITY.indexOf(a.key)
     const ib = PRIORITY.indexOf(b.key)
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
   })
   return out
-}
-
-export type CriterionOption = { id: string; label: string; kind: Criterion['kind'] }
-
-export function thresholdCriteria(scene: Scene): CriterionOption[] {
-  return scene.criteria.map((c) => ({ id: c.id, label: criterionLabel(c), kind: c.kind }))
-}
-
-export function criterionLabel(c: Criterion): string {
-  if (c.label) return c.label
-  switch (c.kind) {
-    case 'detach':
-      return '脱离轨道'
-    case 'reach':
-      return '到达区域'
-    case 'escape':
-      return '穿出区域'
-    case 'coincide':
-      return '共速'
-    case 'collide':
-      return '碰撞'
-    case 'conserve':
-      return c.quantity === 'E' ? '机械能守恒' : '动量守恒'
-  }
-}
-
-/**
- * 场景里有没有「能找临界」的东西：
- * 至少一个可扫参数 + 至少一个判据。守恒类判据也能扫（它会在某个参数上从守恒变不守恒）。
- */
-export function canSearchThreshold(scene: Scene): boolean {
-  return thresholdParams(scene).length > 0 && scene.criteria.length > 0
-}
-
-/** 默认选哪个参数/判据：优先「非守恒判据 + 最高频参数」 */
-export function suggestedThreshold(scene: Scene): { param: string; criterionId: string } | null {
-  const params = thresholdParams(scene)
-  if (!params.length) return null
-  const criteria = thresholdCriteria(scene)
-  if (!criteria.length) return null
-  const flip = criteria.find((c) => c.kind !== 'conserve') ?? criteria[0]!
-  return { param: params[0]!.key, criterionId: flip.id }
-}
-
-/** 生成与旧 `scene.search` 同构的 spec：搜索链路、分享、UI 都不用改 */
-export function thresholdSpec(
-  scene: Scene,
-  paramKey: string,
-  criterionId: string,
-): NonNullable<Scene['search']> | null {
-  const meta = PARAM_META[paramKey]
-  if (!meta) return null
-  if (!scene.params || scene.params[paramKey] === undefined) return null
-  if (!scene.criteria.some((c) => c.id === criterionId)) return null
-  return {
-    path: `/params/${paramKey}`,
-    label: meta.label,
-    min: meta.min,
-    max: meta.max,
-    criterionId,
-  }
 }

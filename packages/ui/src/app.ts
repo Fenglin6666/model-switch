@@ -28,11 +28,11 @@ import {
 } from '@core/scene'
 import { blankScene, presetById } from '@core/presets'
 import { buildChain, defaultChain, stageLabel, type ChainStage, type ChainStageKind } from '@core/chain'
-import { findCritical, formatCritical, type SearchOutcome } from '@core/search'
 import { applySnap, findSnap } from '@core/snap'
 import { describeRecognized, recognizeStroke } from '@core/recognize'
 import { decodeShare, encodeShare } from '@core/serialize'
 import { parseProblem } from '@core/problem'
+import { sceneParams } from '@core/params'
 import { BANK_PROBLEMS, bankCategoryName, bankStats, makeMineProblem, visibleCategories, type BankProblem } from '@core/bank'
 import {
   UNSORTED,
@@ -57,7 +57,6 @@ import {
   type LibraryModel,
 } from '@core/library'
 import { assumptionToggles, cycleAssumption } from '@core/assumptions'
-import { canSearchThreshold, suggestedThreshold, thresholdCriteria, thresholdParams, thresholdSpec } from '@core/threshold'
 import { Simulation, runCriterion } from '@physics/simulation'
 import { UI, inRect, type HitRegion, type Rect } from './widgets'
 import { sceneBoundsPoints } from './scene-bounds'
@@ -128,15 +127,6 @@ type DragState =
   | { kind: 'scale'; bodyId: string; base: Body; center: Vec2; startDist: number }
 
 
-type SearchState = {
-  running: boolean
-  done: number
-  total: number
-  /** 这次搜索扫的是哪个参数、看哪个判据（通用化之后不再只读 doc.search） */
-  spec?: NonNullable<Scene['search']>
-  outcome?: SearchOutcome
-  message?: string
-}
 
 const SPEEDS = [0.5, 1, 2]
 /**
@@ -244,7 +234,6 @@ export class App {
   private chainStages: ChainStage[] = defaultChain()
   private chainSelected = 0
   private chainSeq = 0
-  private search: SearchState | null = null
   /** 左侧参数面板的滚动（窄屏装不下时） */
   private panelScroll = 0
   private panelMaxScroll = 0
@@ -252,10 +241,6 @@ export class App {
   /** 场笔：第一笔定方向后的待选区；fieldStroke 记上一笔用来识别 × */
   private pendingField: { type: 'E' | 'B'; vector?: Vec2; bz?: number } | null = null
   private fieldStroke: { a: Vec2; b: Vec2; t: number } | null = null
-  /** 找临界：通用面板（任意参数 + 任意判据） */
-  private searchPanelOpen = false
-  private searchParamKey = ''
-  private searchCriterionId = ''
 
   constructor(opts: AppOptions) {
     this.ctx = opts.ctx
@@ -396,8 +381,6 @@ export class App {
     this.selectedConstraintId = null
     this.showWorld = false
     this.chainOpen = false
-    this.search = null
-    this.searchPanelOpen = false
     this.tool = 'select'
     this.applyCamera()
     this.rebuild()
@@ -1508,101 +1491,6 @@ if (id) this.ensureBodyVisible(id)
   }
 
   // -------------------------------------------------------------------------
-  // 临界搜索
-  // -------------------------------------------------------------------------
-
-  /**
-   * 找临界。spec 可以来自场景自带的 `scene.search`（预置里手写的），
-   * 也可以由「任意参数 + 任意判据」现场推出来（threshold.ts）——两者同一条链路。
-   */
-  async runSearch(specOverride?: NonNullable<Scene['search']>): Promise<void> {
-    const spec = specOverride ?? this.doc.search ?? this.activeThresholdSpec()
-    if (!spec || this.search?.running) return
-    this.playing = false
-    this.search = { running: true, done: 0, total: 32, spec }
-    const preset = presetById(this.presetId)
-    const base = cloneScene(this.doc)
-    const outcome = await findCritical({
-      range: [spec.min, spec.max],
-      samples: 32,
-      precision: 1e-3,
-      run: async (value) => {
-        const s = setAtPath(cloneScene(base), spec.path, value)
-        preset?.layout?.(s)
-        const res = runCriterion(s, {
-          criterionId: spec.criterionId,
-          maxTime: this.doc.world.duration ?? 6,
-        })
-        if (this.search) this.search.done = Math.min(this.search.total, this.search.done + 1)
-        return res.passed
-      },
-      // 每个采样点都让出一次事件循环：小程序/手机上搜索时界面不会僵住，进度条能走
-      yieldEvery: 1,
-      isAborted: () => !this.search?.running,
-    })
-    const criterion = this.doc.criteria.find((c) => c.id === spec.criterionId)
-    const all = outcome.flips
-    const preferred = all.find((f) =>
-      criterion?.kind === 'detach' ? f.passFrom && !f.passTo : criterion?.kind === 'reach' || criterion?.kind === 'escape' ? !f.passFrom && f.passTo : true,
-    )
-    const flip = preferred ?? all[0]
-    this.search = {
-      running: false,
-      done: outcome.runs,
-      total: outcome.runs,
-      spec,
-      outcome,
-      message: flip
-        ? `${spec.label} ≈ ${formatCritical(flip.critical, 3)} 时翻转`
-        : '这段区间里没有找到翻转',
-    }
-  }
-
-  /** 打开「找临界」面板：任意参数 + 任意判据（预置自带的区间优先） */
-  private openSearchPanel(): void {
-    if (this.search?.running) return
-    const curated = this.doc.search
-    const sug = suggestedThreshold(this.doc)
-    this.searchParamKey = curated ? (curated.path.split('/').pop() ?? '') : (sug?.param ?? '')
-    this.searchCriterionId = curated?.criterionId ?? sug?.criterionId ?? ''
-    this.searchPanelOpen = true
-    this.search = null
-  }
-
-  private activeThresholdSpec(): NonNullable<Scene['search']> | null {
-    const sug = suggestedThreshold(this.doc)
-    const param = this.searchParamKey || sug?.param
-    const criterionId = this.searchCriterionId || sug?.criterionId
-    if (!param || !criterionId) return null
-    // 预置里手写过同一条（带理论值/精选区间）就沿用它，换参数才现推一条
-    const curated = this.doc.search
-    if (curated && curated.path === `/params/${param}` && curated.criterionId === criterionId) return curated
-    return thresholdSpec(this.doc, param, criterionId)
-  }
-
-  private startThresholdSearch(): void {
-    const spec = this.activeThresholdSpec()
-    if (!spec) {
-      this.toast('这个场景还没有能扫的参数或判据')
-      return
-    }
-    this.searchPanelOpen = false
-    void this.runSearch(spec)
-  }
-
-  private applySearchValue(value: number): void {
-    const spec = this.search?.spec ?? this.doc.search
-    if (!spec) return
-    this.doc = setAtPath(this.doc, spec.path, value)
-    if (this.presetId) {
-      presetById(this.presetId)?.layout?.(this.doc)
-      applyEdits(this.doc)
-    }
-    this.rebuild()
-    this.search = null
-  }
-
-  // -------------------------------------------------------------------------
   // 渲染
   // -------------------------------------------------------------------------
 
@@ -1704,8 +1592,6 @@ if (id) this.ensureBodyVisible(id)
     if (this.selectedId || this.selectedConstraintId || this.showWorld) this.renderDock()
     if (this.pendingField) this.renderFieldHint()
     if (this.chainOpen) this.renderChainPanel()
-    if (this.searchPanelOpen) this.renderSearchPanel()
-    this.renderSearchOverlay()
   }
 
   // ---- 舞台：状态药丸 + 播放键 + 右上角分享 ----
@@ -1944,7 +1830,6 @@ if (id) this.ensureBodyVisible(id)
     this.panelScroll = clamp(this.panelScroll, -this.panelMaxScroll, 0)
 
     const links: Array<[string, () => void]> = [
-      ['找临界', () => this.openSearchPanel()],
       ['世界', () => {
         this.showWorld = !this.showWorld
         this.selectedId = null
@@ -1970,7 +1855,7 @@ if (id) this.ensureBodyVisible(id)
   /** 场景参数：题干用词的那几个（θ、μ、v₀、R…） */
   private renderSceneParams(x: number, y0: number, w: number): number {
     let y = y0
-    const params = thresholdParams(this.doc).slice(0, 4)
+    const params = sceneParams(this.doc).slice(0, 4)
     if (!params.length) {
       this.ui.text('这个场景没有可调参数', x, y + 8, { size: 10, color: THEME.inkFaint })
       y += 24
@@ -3463,119 +3348,7 @@ const focus = this.focusBody(this.doc)
     ctx.restore()
   }
 
-  private renderSearchPanel(): void {
-    const params = thresholdParams(this.doc)
-    const criteria = thresholdCriteria(this.doc)
-    const w = Math.min(this.width - 24, 470)
-    const h = 150
-    const r: Rect = { x: (this.width - w) / 2, y: this.dockRect().y - h - 10, w, h }
-    this.ui.card(r, { radius: 16, fill: THEME.card, stroke: THEME.hairline })
-    this.ui.add({ id: 'search:card', rect: r })
-    this.ui.text('找临界', r.x + 14, r.y + 18, { size: 11.5, weight: 700 })
-    this.ui.text('扫一个参数，看判据在哪翻转', r.x + 70, r.y + 18, { size: 9.5, color: THEME.inkFaint })
-    this.ui.iconButton({ x: r.x + r.w - 40, y: r.y + 6, w: 28, h: 28 }, 'close', {
-      onClick: () => {
-        this.searchPanelOpen = false
-      },
-    })
 
-    this.ui.text('参数', r.x + 14, r.y + 45, { size: 9, weight: 600, color: THEME.inkFaint })
-    let x = r.x + 46
-    for (const p of params.slice(0, 4)) {
-      const pw = Math.min(100, 22 + p.label.length * 10)
-      if (x + pw > r.x + r.w - 14) break
-      this.ui.pillButton({ x, y: r.y + 32, w: pw, h: 26 }, p.label, {
-        active: this.searchParamKey === p.key,
-        size: 9.5,
-        onClick: () => {
-          this.searchParamKey = p.key
-        },
-      })
-      x += pw + 6
-    }
-
-    this.ui.text('判据', r.x + 14, r.y + 81, { size: 9, weight: 600, color: THEME.inkFaint })
-    x = r.x + 46
-    for (const c of criteria.slice(0, 4)) {
-      const cw = Math.min(116, 22 + c.label.length * 11)
-      if (x + cw > r.x + r.w - 14) break
-      this.ui.pillButton({ x, y: r.y + 68, w: cw, h: 26 }, c.label, {
-        active: this.searchCriterionId === c.id,
-        size: 9.5,
-        onClick: () => {
-          this.searchCriterionId = c.id
-        },
-      })
-      x += cw + 6
-    }
-
-    const spec = this.activeThresholdSpec()
-    const hint = spec ? `区间 ${formatCritical(spec.min, 3)} – ${formatCritical(spec.max, 3)}` : '选一个参数和一个判据'
-    this.ui.text(hint, r.x + 14, r.y + h - 22, { size: 9.5, color: THEME.inkSoft })
-    this.ui.pillButton({ x: r.x + r.w - 132, y: r.y + h - 40, w: 118, h: 30 }, '开始搜索', {
-      active: !!spec,
-      size: 11,
-      weight: 600,
-      onClick: () => this.startThresholdSearch(),
-    })
-  }
-
-  private renderSearchOverlay(): void {
-    if (!this.search) return
-    if (this.search.running) {
-      const w = Math.min(360, this.width - 40)
-      const r: Rect = { x: (this.width - w) / 2, y: this.dockRect().y - 92, w, h: 66 }
-      this.ui.card(r, { radius: 16 })
-      this.ui.text('正在二分找临界…', r.x + 16, r.y + 18, { size: 11, weight: 600 })
-      this.ui.progress({ x: r.x + 16, y: r.y + 40, w: r.w - 32, h: 8 }, this.search.done / Math.max(1, this.search.total))
-      return
-    }
-    const outcome = this.search.outcome
-    if (!outcome) return
-    const spec = this.search.spec ?? this.doc.search
-    const criterion = this.doc.criteria.find((c) => c.id === spec?.criterionId)
-    const flip =
-      outcome.flips.find((f) =>
-        criterion?.kind === 'detach' ? f.passFrom && !f.passTo : criterion?.kind === 'reach' || criterion?.kind === 'escape' ? !f.passFrom && f.passTo : true,
-      ) ?? outcome.flips[0]
-    if (!flip) {
-      const w = 300
-      const r: Rect = { x: (this.width - w) / 2, y: this.dockRect().y - 80, w, h: 54 }
-      this.ui.card(r, { radius: 16 })
-      this.ui.text(this.search.message ?? '没有找到翻转', r.x + 16, r.y + 20, { size: 11 })
-      this.ui.iconButton({ x: r.x + r.w - 38, y: r.y + 12, w: 28, h: 28 }, 'close', {
-        onClick: () => {
-          this.search = null
-        },
-      })
-      return
-    }
-    const w = Math.min(400, this.width - 40)
-    const r: Rect = { x: (this.width - w) / 2, y: this.dockRect().y - 96, w, h: 74 }
-    this.ui.card(r, { radius: 16 })
-    const text = spec ? `${spec.label} ?${formatCritical(flip.critical, 3)}` : `${flip.critical.toFixed(3)}`
-    this.ui.text(text, r.x + 16, r.y + 20, { size: 15, weight: 700 })
-    this.ui.text('两侧刚好翻转', r.x + 16, r.y + 40, { size: 10, color: THEME.inkSoft })
-    if (spec?.theory !== undefined) {
-      const diff = Math.abs(flip.critical - spec.theory) / Math.max(1e-6, spec.theory)
-      this.ui.text(
-        `${spec.theoryLabel ?? '理论'} ?${formatCritical(spec.theory, 3)}（差 ${(diff * 100).toFixed(1)}%）`,
-        r.x + 16,
-        r.y + 56,
-        { size: 10, color: THEME.green },
-      )
-    }
-    this.ui.pillButton({ x: r.x + r.w - 150, y: r.y + 20, w: 84, h: 30 }, '跳到该值', {
-      active: true,
-      onClick: () => this.applySearchValue(flip.critical),
-      size: 11,
-    })
-    this.ui.iconButton({ x: r.x + r.w - 56, y: r.y + 20, w: 30, h: 30 }, 'close', {
-      onClick: () => {
-        this.search = null
-      },
-    })
-  }
 
   // -------------------------------------------------------------------------
   // 题库（首页）/ 建模库（收藏夹）
@@ -3597,9 +3370,6 @@ const focus = this.focusBody(this.doc)
   tabBarRect(): Rect {
     return this.layout().tabBar
   }
-
-  /** 三个页面共用的底部选择栏：用户 / 题库 / 模型 */
-
 
   toBank(): void {
     if (this.mode === 'scene') this.persistCurrent()

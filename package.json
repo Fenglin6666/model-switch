@@ -18,8 +18,7 @@
     "validate": "node scripts/validate/run-all.mjs",
     "doc:check": "node scripts/doc-facts.mjs",
     "doc:facts": "node scripts/doc-facts.mjs --write",
-    "build:mp": "node scripts/build-miniprogram.mjs",
-    "shot": "node scripts/shots.mjs"
+    "build:mp": "node scripts/build-miniprogram.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

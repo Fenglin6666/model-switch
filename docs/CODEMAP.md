@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 3905 |
+| `packages/ui/src/app.ts` | 3675 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 141 |
 | `packages/ui/src/pages/bank.ts` | 365 |
@@ -27,15 +27,14 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 | `packages/ui/src/widgets.ts` | 496 |
 | `packages/ui/src/icons.ts` | 391 |
 | `packages/ui/src/chart.ts` | 194 |
-| `packages/core/src/presets.ts` | 1541 |
-| `packages/core/src/scene.ts` | 510 |
+| `packages/core/src/presets.ts` | 1525 |
+| `packages/core/src/scene.ts` | 499 |
 | `packages/core/src/problem.ts` | 279 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
 | `packages/core/src/library.ts` | 215 |
-| `packages/core/src/threshold.ts` | 136 |
+| `packages/core/src/params.ts` | 70 |
 | `packages/core/src/criterion.ts` | 297 |
-| `packages/core/src/search.ts` | 141 |
 | `packages/core/src/serialize.ts` | 251 |
 | `packages/render/src/renderer.ts` | 1240 |
 | `packages/render/src/camera.ts` | 253 |
@@ -65,7 +64,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 可跑�
 - [`tests/acceptance.test.ts`](../tests/acceptance.test.ts)：半圆槽等高、动量、圆轨道临界值 vs √(5gR)，全是可执行断言。
 - [`docs/DECISIONS.md`](DECISIONS.md) §1：推导 + 实测数字。
 - [`packages/core/src/criterion.ts`](../packages/core/src/criterion.ts)：6 种判据怎么从事件流里判。
-- [`packages/core/src/search.ts`](../packages/core/src/search.ts) + [`threshold.ts`](../packages/core/src/threshold.ts)：粗扫 + 二分，以及「任意参数 + 任意判据」的通用化。
+- [`packages/core/src/criterion.ts`](../packages/core/src/criterion.ts)：6 种判据；判据只看事件流，不判对错。
 
 ### C. 想改视觉 / 交互
 
@@ -100,10 +99,9 @@ D:\Slogan
 │  │  ├─ recognize.ts           手绘一笔 → 圆/矩形/多边形/直线/折线
 │  │  ├─ bank.ts                题库：分类 + 15 道题 + 每条的 expect
 │  │  ├─ library.ts             建模库：文件夹 / 模型 / 我的题目 + 持久化
-│  │  ├─ threshold.ts           临界通用化：参数区间表 + spec 生成
+│  │  ├─ params.ts             场景参数的可调区间（左侧滑杆的数据源）
 │  │  ├─ assumptions.ts         假设 → 可点 chip（只写 params）
 │  │  ├─ criterion.ts           判据（detach/reach/escape/coincide/collide/conserve）
-│  │  ├─ search.ts              临界搜索（core 不依赖物理包，回调注入）
 │  │  ├─ serialize.ts           存取 / 分享（p1 短串、s1 完整 JSON）
 │  │  ├─ shapes.ts              意图形状 → 物理 fixture / 渲染几何
 │  │  ├─ snap.ts                吸附：最近表面点 + 法线 + 切线角
@@ -148,7 +146,7 @@ D:\Slogan
 | 改手绘识别阈值 | `core/recognize.ts`（圆度 / 面积占比 / 直线度） |
 | 改场笔手势 | `ui/app.ts` 的 `finishFieldStroke` / `commitField` |
 | 加一种判据 | `core/scene.ts` 的 `Criterion` + `core/criterion.ts` 的 `updateOne` |
-| 改临界搜索 | `core/search.ts`（粗扫/精度）+ `core/threshold.ts`（参数区间） |
+| 改左侧参数滑杆 | `core/params.ts`（参数表）+ `ui/app.ts` 的 `renderSceneParams` |
 | 改配色 / 字体 | `render/theme.ts`（一套 token 管全部） |
 | 改编辑器布局 | `ui/app.ts` 的 `panelRect` / `stageRect` / `chartRect` / `viewPan` |
 | 改左侧参数面板 | `ui/app.ts` 的 `renderSidebar` / `renderSceneParams` / `renderBodyParams` |

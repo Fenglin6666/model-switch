@@ -94,7 +94,7 @@ describe('P1 验收：半圆槽（条件层）', () => {
   })
 })
 
-describe('P1 验收：竖直圆轨道（判据 + 临界）', () => {
+describe('P1 验收：竖直圆轨道（判据）', () => {
   it('仿真临界速度与 √(5gR) 偏差 < 1%', () => {
     const base = buildPresetScene('loop')
     const g = base.world.gravity
@@ -114,22 +114,7 @@ describe('P1 验收：竖直圆轨道（判据 + 临界）', () => {
     expect(Math.abs(measured - theory) / theory).toBeLessThan(0.01)
   })
 
-  it('找临界：粗扫 + 二分能在 100 次仿真内收敛', async () => {
-    const { findCritical } = await import('@core/search')
-    const base = buildPresetScene('loop')
-    const outcome = await findCritical({
-      range: [1, 8],
-      samples: 32,
-      precision: 1e-3,
-      run: async (v) => {
-        const s = setAtPath(base, '/params/v0', v)
-        presetById('loop')!.layout!(s)
-        return runCriterion(s, { criterionId: 'detach', maxTime: 3 }).passed
-      },
-    })
-    expect(outcome.flips.length).toBeGreaterThan(0)
-    expect(outcome.runs).toBeLessThan(100)
-  })
+
 })
 
 describe('P0/P1 验收：平抛与空气阻力', () => {

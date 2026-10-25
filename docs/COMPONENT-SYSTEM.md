@@ -106,7 +106,7 @@
 
 **为什么需要它**：现在 `scene.search` 只支持「一个参数 + 一个判据 + 硬编码的 min/max」，而且每个场景要手写一条。而**46% 的计算题含临界**——这是最高频的结构，却只有最窄的实现。
 
-> **实现说明（v5.4）**：没有把 `threshold` 做成新的 criterion kind，而是做成**通用的搜索 spec**（`packages/core/src/threshold.ts`）。
+> **实现说明（v5.4，已于 2026-10-25 移除）**：当时没有把 `threshold` 做成新的 criterion kind，而是做成**通用的搜索 spec**（`packages/core/src/threshold.ts`）。该模块与入口现已删除，本节保留为历史决策。
 > 理由：临界不是「每帧判断的谓词」，是「扫一个参数看某个判据在哪翻转」——它属于搜索层，不属于判据层。
 > `thresholdSpec()` 生成的对象与旧 `scene.search` **完全同构**（`{path,label,min,max,criterionId}`），所以搜索链路、分享、UI 都不用改；
 > 参数区间来自 `PARAM_META`（题干用词，0/1 开关不进来），判据从场景现推。预置里手写过的同一条仍然优先（带理论值与精选区间）。

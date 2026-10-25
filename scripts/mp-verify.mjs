@@ -5,7 +5,7 @@
 //   3. cli.bat auto --project D:\Slogan\apps\miniprogram --auto-port 9420
 //   4. node scripts/mp-verify.mjs
 //
-// 验证内容：页面启动、画布与安全区、预置场景步进、A/B、临界搜索、触摸拖拽、分享串。
+// 验证内容：页面启动、画布与安全区、预置场景步进、判据、触摸拖拽、题库/详情/建模库、分享串。
 import automator from 'miniprogram-automator'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -257,31 +257,6 @@ try {
   })
   check('建模库卡片点开回到画布', lib.ok && lib.current, JSON.stringify(lib))
   await shot('mp-10-library.png')
-
-  // 圆轨道找临界
-  await mp.evaluate(() => {
-    const a = getCurrentPages().slice(-1)[0].app
-    a.loadPreset('loop')
-    // 开发者工具里单次仿真很慢：只跑到过最高点、步长放粗，临界位置不变（≈5.2），
-    // 但不会把 JS 线程占住几十秒把 automator 拖超时
-    a.doc.world.duration = 1.5
-    a.doc.world.timeStep = 1 / 240
-    a.runSearch()
-  })
-  for (let i = 0; i < 30; i++) {
-    await sleep(400)
-    const running = await mp.evaluate(() => {
-      const s = getCurrentPages().slice(-1)[0].app.search
-      return s ? s.running : false
-    })
-    if (!running) break
-  }
-  const search = await mp.evaluate(() => {
-    const a = getCurrentPages().slice(-1)[0].app
-    return { message: a.search && a.search.message, theory: a.doc.search && a.doc.search.theory }
-  })
-  check('临界搜索', /≈\s*5\.\d/.test(search.message || ''), search.message)
-  await shot('mp-08-search.png')
 
   check('无运行时错误', errors.length === 0, errors.join(' | '))
 } finally {

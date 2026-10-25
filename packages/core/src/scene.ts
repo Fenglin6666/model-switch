@@ -296,17 +296,6 @@ export type Scene = {
   guides: Guide[]
   /** 用户编辑覆盖层：布局/分享后重新应用，避免被预置布局冲掉 */
   edits?: { bodies?: Record<string, BodyEdit>; constraints?: Record<string, ConstraintEdit> }
-  /** 「帮我找临界」的参数区间（没有就不显示这个按钮） */
-  search?: {
-    path: string
-    label: string
-    min: number
-    max: number
-    criterionId: string
-    /** 理论值，用来对照（可选） */
-    theory?: number
-    theoryLabel?: string
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -392,15 +392,7 @@ function buildLoop(): Scene {
     { id: 'detach', kind: 'detach', bodyId: 'ball', trackId: 'loop', until: 0.7, hold: 0.04, label: '脱离轨道' },
   ]
   s.guides = [{ id: 'top', kind: 'hline', y: LOOP_CY + LOOP_R, label: '最高点', x0: -1.25, x1: 1.25 }]
-  s.search = {
-    path: '/params/v0',
-    label: 'v₀',
-    min: 1,
-    max: 8,
-    criterionId: 'detach',
-    theory: Math.sqrt(5 * 9.8 * (LOOP_R - LOOP_BALL_R)),
-    theoryLabel: '√(5gR)',
-  }
+
 return s
 }
 
@@ -488,15 +480,7 @@ function buildProjectile(): Scene {
   ]
   s.criteria = [{ id: 'hit', kind: 'reach', bodyId: 'ball', regionId: 'target', label: '到达目标' }]
   s.guides = [{ id: 'ideal', kind: 'vline', x: PJ_TARGET_X, label: '无阻力落点', y0: 0, y1: 2.4 }]
-  s.search = {
-    path: '/params/v0',
-    label: 'v₀',
-    min: 1,
-    max: 9,
-    criterionId: 'hit',
-    theory: 5.5,
-    theoryLabel: '刚好命中目标的 v₀',
-  }
+
 return s
 }
 

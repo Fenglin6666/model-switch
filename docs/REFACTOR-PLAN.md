@@ -54,13 +54,7 @@
   ```
   这样「哪些参数能调」变成数据，而不是 8 段重复的滑杆代码。
 
-### 4. `editor/threshold-overlay.ts`（约 200 行）
-
-`openSearchPanel` / `renderSearchPanel` / `renderSearchOverlay` / `activeThresholdSpec`。
-
-- 这层已经基本无状态（全靠 `search` 字段），拆起来最轻松，可以顺手做。
-
-### 5. 输入层（暂不拆）
+### 4. 输入层（暂不拆）
 
 `pointerDown/Move/Up`、`moveDrag`、`wheel`、`key`——状态机式代码，硬拆容易出隐蔽 bug。
 **先补测试再拆**：把「命中区 → 动作」的分发逻辑提成 `dispatchHit(hit, ctx)`，用假 hit 跑断言。
