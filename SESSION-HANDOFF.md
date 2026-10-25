@@ -66,11 +66,11 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 | **拆分（v5.9）** | `app.ts` 4772 → 3905 行（v5.9 当时；当前行数见 `docs/CODEMAP.md` 事实块）：页面搬进 `ui/pages/`（`PagesHost` 窄接口），布局与画图逻辑提成**纯函数**（`ui/editor/layout.ts`、`ui/editor/drawing.ts`），新增 19 个 UI 单测 | `docs/REFACTOR-PLAN.md`；`tests/ui-layout.test.ts`、`tests/ui-drawing.test.ts` |
 | **编辑器布局（v5.8）** | 左参数面板（标题 / 7 个工具 / 参数滑杆 / 假设 chip / 重新开始 / 重置视图 / 读数卡 / 入口）+ 右舞台（状态药丸 + 播放键 + 分享·世界）+ 底部 v–t 图；白面板 + 冷灰舞台 + 紫色强调 | `panelRect()` / `stageRect()` / `chartRect()` / `renderSidebar()` / `renderStageChrome()` / `renderChartPanel()`；`viewPan()` 让相机对准舞台 |
 | **画图（v5.7）** | 没有预置组件库：笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场），建完在左侧调场强/方向；选中可拖手柄缩放 | 左栏 8 个工具；`packages/core/src/recognize.ts`、`App.finishDraw` / `finishFieldStroke` / `commitField`；`docs/DRAWING.md` |
-| **组件（v5.11）** | 组件由使用产生：选中物体 →「＋ 存为组件」，从选中体顺着约束把整段抓出来（点球 A 得「球A + 球B + 绳」）；「组件」面板插入到舞台中央，id 换新前缀、约束两端跟着换；16 物体 / 40 组件上限 | `packages/core/src/components.ts`、`App.saveComponent` / `insertSavedComponent` / `renderComponentsPanel`；`docs/COMPONENTS.md`；18 个单测 + 3 项截图验收 |
+| **组件（v5.12）** | 组件由使用产生：选中物体 →「＋ 存为组件」，从选中体顺着约束把整段抓出来（点球 A 得「球A + 球B + 绳」）；「组件」面板插入到舞台中央，id 换新前缀、约束两端跟着换；16 物体 / 40 组件上限 | `packages/core/src/components.ts`、`App.saveComponent` / `insertSavedComponent` / `renderComponentsPanel`；`docs/COMPONENTS.md`；18 个单测 + 3 项截图验收 |
 | **假设可勾选（v5.4）** | 「假设」变成可点 chip（v5.8 起从状态条搬进左侧面板）：滑块/小球/滚动、光滑/粗糙、固定/可移动、有无阻力；点一下 `layout()` 重算，分享串仍 `p1.` | 左侧面板 `assume:*`；`packages/core/src/assumptions.ts` |
 | **视觉语法（v5.4）** | 静态地形 45° 剖面线（固定端）、磁场 ×/· 阵列 + 方向标签、电场箭头、带电 +/−；短边 <24px 不画装饰 | 渲染层自动；`renderer.ts` |
 
-### 组件：从使用中沉淀（v5.11）
+### 组件：从使用中沉淀（v5.12）
 
 **没有预置组件库**（v5.1 那套「点电荷/天体/碰撞球/气缸/滑轮」的加号面板已经删了）。组件是用户自己存出来的：
 
@@ -364,7 +364,7 @@ npm run build:mp             466.5 KB
 ```
 项目在 D:/Slogan（模型开关）。先读 SESSION-HANDOFF.md，再读 README、docs/DRAWING.md、docs/COMPONENTS.md。
 
-现状：v5.11。底部三栏：用户 / 题库 / 模型。
+现状：v5.12。底部三栏：用户 / 题库 / 模型。
 - 题库：点一张题 → 题目详情（完整题干）→ 按「生成建模」→ 模型进「模型」页（收藏夹，自建文件夹，本地持久化）。
 - 画布：**没有预置组件库**。笔一落就识别（圆/矩形/多边形/直线/折线），画什么就是什么；电场/磁场是两个独立按钮，按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
 - 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。组件由使用产生，不是我们穷举的清单。
@@ -414,7 +414,7 @@ app.ts 已从 4772 行拆到 3929：页面在 ui/pages/，布局/画图逻辑是
 ## 12. 当前工作区状态
 
 - 根目录无临时补丁脚本（`scripts/_*` 已清理）。
-- 最新截图（v5.11）：`233-component`（组件面板 + 插入结果）、`240-editor`、`241-editor-selected`、`242-editor-draw`、`244-user`；`220`–`232` 仍有效。
-- v5.11 改动面（组件）：新增 `packages/core/src/components.ts`、`tests/components.test.ts`（18 项）、`docs/COMPONENTS.md`；`library.ts` 加 `components` 段（40 上限、容错解析）；`app.ts` 加 `saveComponent` / `insertSavedComponent` / `renderComponentsPanel` / `renameSavedComponent`，检查器加「＋ 存为组件」，侧栏加「组件」；`shots-draw.mjs` 22 → 25 项；`scripts/doc-facts.mjs` 盯的文件 27 → 28 个。
+- 最新截图（v5.12）：`233-component`（组件面板 + 插入结果）、`240-editor`、`241-editor-selected`、`242-editor-draw`、`244-user`；`220`–`232` 仍有效。
+- v5.12 改动面（组件）：新增 `packages/core/src/components.ts`、`tests/components.test.ts`（18 项）、`docs/COMPONENTS.md`；`library.ts` 加 `components` 段（40 上限、容错解析）；`app.ts` 加 `saveComponent` / `insertSavedComponent` / `renderComponentsPanel` / `renameSavedComponent`，检查器加「＋ 存为组件」，侧栏加「组件」；`shots-draw.mjs` 22 → 25 项；`scripts/doc-facts.mjs` 盯的文件 27 → 28 个。
 - v5.9 改动面（拆分）：新增 `packages/ui/src/pages/{host,shared,bank,library,user,index}.ts`、`packages/ui/src/editor/{layout,drawing}.ts`、`packages/ui/src/scene-bounds.ts`、`tests/ui-{layout,drawing}.test.ts`、`docs/REFACTOR-PLAN.md`、`scripts/doc-facts.mjs`（`npm run doc:check`）；`app.ts` 只留转发与编排；`docs/CODEMAP.md` 重写为「事实块 + 阅读路线」。
 - 目标已完成，新会话可直接按第 10 节开新目标；不需要 resume 旧 goal。
