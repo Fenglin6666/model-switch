@@ -1,0 +1,9 @@
+{
+  "desc": "模型开关小程序 sitemap",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+# 依赖与产物
+node_modules/
+dist/
+
+# 系统 / 编辑器
+.DS_Store
+.idea/
+*.local
+
+# 本地验证输出
+validation-output/
+
+# 助手的工作记忆（会话记录、项目备忘），不进仓库
+.workbuddy-ai/
+
+# 截图：只提交 README 引用的那些，其余是迭代过程（34 MB / 216 张）
+screenshots/*
+!screenshots/143-ramparc-final.png
+!screenshots/150-slope-geometry.png
+!screenshots/151-loop-radius.png
+!screenshots/155-board-scene.png
+!screenshots/156-board-sheet.png
+!screenshots/186-mp-picker-v52.png
+!screenshots/204-assumption-toggled.png
+!screenshots/207-threshold-panel.png
+!screenshots/212a-dialog-rejected.png
+!screenshots/220-bank.png
+!screenshots/221-problem-detail.png
+!screenshots/224-user.png
+!screenshots/226-library.png
+!screenshots/230-field-e.png
+!screenshots/231-field-b.png
+!screenshots/232-drawn-scene.png
+!screenshots/240-editor.png
+!screenshots/241-editor-selected.png
+!screenshots/81-spring.png
+!screenshots/82-pendulum.png
+!screenshots/83-efield.png

@@ -1,0 +1,9 @@
+<canvas
+  type="2d"
+  id="stage"
+  class="stage"
+  bindtouchstart="onTouchStart"
+  bindtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchEnd"
+></canvas>

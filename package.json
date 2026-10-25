@@ -1,0 +1,32 @@
+{
+  "name": "model-switch",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "模型开关 · 把高中物理题变成形象、可拨动、可手改的物理建模",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @phys/web",
+    "build": "npm run build --workspace @phys/web",
+    "preview": "npm run preview --workspace @phys/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "validate": "node scripts/validate/run-all.mjs",
+    "doc:check": "node scripts/doc-facts.mjs",
+    "doc:facts": "node scripts/doc-facts.mjs --write",
+    "build:mp": "node scripts/build-miniprogram.mjs",
+    "shot": "node scripts/shots.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "miniprogram-automator": "^0.13.0",
+    "playwright-core": "^1.55.0",
+    "typescript": "^5.7.2",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

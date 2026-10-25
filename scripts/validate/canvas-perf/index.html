@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>2.5D canvas perf probe</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f6f4ef; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// 2.5D 挤出渲染的性能探针：40 个挤出形状 + 阴影 + 深度排序 + 文字
+// 目的：验证 Canvas2D 能否稳定 60fps（架构 §13.2），同时先试出视觉方案。
+
+const DPR = 2
+const W = 1280, H = 800
+const canvas = document.getElementById('c')
+canvas.width = W * DPR
+canvas.height = H * DPR
+canvas.style.width = W + 'px'
+canvas.style.height = H + 'px'
+const ctx = canvas.getContext('2d', { alpha: false })
+ctx.scale(DPR, DPR)
+
+const PAPER = '#f6f4ef'
+const INK = '#262b33'
+const PHI = -10 * Math.PI / 180
+const EPS = 25 * Math.PI / 180
+const SCALE = 100
+const CX = W / 2, CY = H / 2 + 60
+const GRAV_UP = true // vertical plane: depth axis = y
+
+// ---- 投影 ----
+function project(p, q, depth) {
+  // vertical plane: (x=p, y=depth, z=q)
+  const x = p, y = depth, z = q
+  const u = x * Math.cos(PHI) - y * Math.sin(PHI)
+  const v = (x * Math.sin(PHI) + y * Math.cos(PHI)) * Math.sin(EPS) - z * Math.cos(EPS)
+  return [CX + u * SCALE, CY - v * SCALE]
+}
+
+// ---- 场景 ----
+const shades = ['#5b7cfa', '#e8734a', '#3fa37a', '#b06ad6', '#d9a441']
+const bodies = []
+for (let i = 0; i < 40; i++) {
+  const circle = i % 3 === 0
+  const outline = []
+  const n = circle ? 24 : 4
+  const r = 0.18 + (i % 5) * 0.05
+  for (let k = 0; k < n; k++) {
+    if (circle) {
+      const a = (k / n) * Math.PI * 2
+      outline.push([Math.cos(a) * r, Math.sin(a) * r])
+    } else {
+      outline.push([(k === 0 || k === 3 ? -1 : 1) * r * 1.2, (k < 2 ? 1 : -1) * r * 0.85])
+    }
+  }
+  bodies.push({
+    p: -4 + (i % 8) * 1.1,
+    q: -2.2 + Math.floor(i / 8) * 1.1,
+    angle: (i % 7) * 0.2,
+    outline,
+    depth: 0.15,
+    color: shades[i % shades.length],
+  })
+}
+
+function transform(outline, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle)
+  return outline.map(([x, y]) => [x * c - y * s, x * s + y * c])
+}
+
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16)
+  const r = Math.min(255, Math.round(((n >> 16) & 255) * f))
+  const g = Math.min(255, Math.round(((n >> 8) & 255) * f))
+  const b = Math.min(255, Math.round((n & 255) * f))
+  return `rgb(${r},${g},${b})`
+}
+
+function path(pts) {
+  ctx.beginPath()
+  ctx.moveTo(pts[0][0], pts[0][1])
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+  ctx.closePath()
+}
+
+function drawBody(b) {
+  const local = transform(b.outline, b.angle)
+  const front = local.map(([x, y]) => project(b.p + x, b.q + y, 0))
+  const back = local.map(([x, y]) => project(b.p + x, b.q + y, b.depth))
+
+  // 影子（地面 z=0 上的同形状，α=0.12）
+  const shadow = local.map(([x, y]) => project(b.p + x, 0.02, 0))
+  ctx.fillStyle = 'rgba(38,43,51,0.10)'
+  path(shadow); ctx.fill()
+
+  // 背面
+  ctx.fillStyle = shade(b.color, 0.55)
+  path(back); ctx.fill()
+
+  // 侧壁：每条边一个四边形
+  for (let i = 0; i < front.length; i++) {
+    const j = (i + 1) % front.length
+    ctx.beginPath()
+    ctx.moveTo(back[i][0], back[i][1])
+    ctx.lineTo(back[j][0], back[j][1])
+    ctx.lineTo(front[j][0], front[j][1])
+    ctx.lineTo(front[i][0], front[i][1])
+    ctx.closePath()
+    ctx.fillStyle = shade(b.color, i % 2 ? 0.72 : 0.64)
+    ctx.fill()
+  }
+
+  // 正面
+  ctx.fillStyle = b.color
+  path(front); ctx.fill()
+  ctx.strokeStyle = 'rgba(38,43,51,0.35)'
+  ctx.lineWidth = 1.2
+  ctx.stroke()
+}
+
+function drawScene() {
+  ctx.fillStyle = PAPER
+  ctx.fillRect(0, 0, W, H)
+
+  // 地面网格
+  ctx.strokeStyle = 'rgba(38,43,51,0.07)'
+  ctx.lineWidth = 1
+  for (let m = -5; m <= 5; m++) {
+    const a = project(m, 0, 0), b = project(m, 4.5, 0)
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke()
+  }
+  for (let m = 0; m <= 4; m++) {
+    const a = project(-5, m, 0), b = project(5, m, 0)
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke()
+  }
+  // 地面线
+  const g0 = project(-5, 0, 0), g1 = project(5, 0, 0)
+  ctx.strokeStyle = 'rgba(38,43,51,0.55)'
+  ctx.lineWidth = 2
+  ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(g1[0], g1[1]); ctx.stroke()
+
+  bodies.sort((a, b) => (b.p * Math.sin(PHI) + b.depth * Math.cos(PHI)) - (a.p * Math.sin(PHI) + a.depth * Math.cos(PHI)))
+  for (const b of bodies) drawBody(b)
+
+  // 一张图表卡
+  ctx.save()
+  ctx.shadowColor = 'rgba(38,43,51,0.12)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath(); ctx.roundRect(32, H - 250, 320, 200, 14); ctx.fill()
+  ctx.restore()
+  ctx.fillStyle = INK
+  ctx.font = '600 13px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif'
+  ctx.fillText('v–t 图', 52, H - 220)
+  ctx.strokeStyle = '#5b7cfa'; ctx.lineWidth = 2.4
+  ctx.beginPath()
+  for (let i = 0; i <= 60; i++) {
+    const x = 52 + i * 4.2
+    const y = H - 60 - i * 1.6
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  }
+  ctx.stroke()
+
+  // 工具栏
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
+  ctx.beginPath(); ctx.roundRect(W / 2 - 190, 18, 380, 52, 16); ctx.fill()
+  ctx.fillStyle = INK
+  ctx.font = '600 14px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText('θ = 30°     μ = 0.20     v₀ = 0 m/s', W / 2 - 160, 50)
+}
+
+// ---- 基准测试 ----
+const times = []
+let last = performance.now()
+let frames = 0
+const WARMUP = 30
+const MEASURE = 300
+
+function loop(now) {
+  drawScene()
+  const dt = now - last
+  last = now
+  frames++
+  if (frames > WARMUP && frames <= WARMUP + MEASURE) times.push(dt)
+  if (frames < WARMUP + MEASURE) {
+    requestAnimationFrame(loop)
+  } else {
+    times.sort((a, b) => a - b)
+    const avg = times.reduce((s, v) => s + v, 0) / times.length
+    const p95 = times[Math.floor(times.length * 0.95)]
+    const result = {
+      frames: times.length,
+      avgMs: +avg.toFixed(2),
+      fps: +(1000 / avg).toFixed(1),
+      p95Ms: +p95.toFixed(2),
+      p95Fps: +(1000 / p95).toFixed(1),
+      worstMs: +times[times.length - 1].toFixed(2),
+      shapes: bodies.length,
+      dpr: DPR,
+      size: [W, H],
+    }
+    window.__perfResult = result
+    document.title = JSON.stringify(result)
+    console.log(JSON.stringify(result))
+  }
+}
+requestAnimationFrame(loop)
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f5ef" />
+    <meta name="description" content="把一道高中物理题，变成一张形象、能拨动的物理模型；生成不准就直接改，手动编辑是兜底。" />
+    <title>模型开关 · 题目 → 物理建模</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f7f5ef;
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior: none;
+      }
+      #stage {
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+        cursor: default;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f7f5ef;
+        color: #5b6472;
+        font: 500 13px "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+        transition: opacity 0.25s ease;
+        z-index: 10;
+      }
+      #boot.hide { opacity: 0; pointer-events: none; }
+      .dot {
+        width: 8px; height: 8px; border-radius: 4px; background: #e2694a;
+        margin-right: 8px; animation: pulse 1s ease-in-out infinite;
+      }
+      @keyframes pulse { 0%,100% { transform: scale(0.7); opacity: 0.5 } 50% { transform: scale(1); opacity: 1 } }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div id="boot"><span class="dot"></span>正在准备画布…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
