@@ -32,6 +32,8 @@ import { applySnap, findSnap } from '@core/snap'
 import { describeRecognized, recognizeStroke } from '@core/recognize'
 import { decodeShare, encodeShare } from '@core/serialize'
 import { parseProblem } from '@core/problem'
+import { sceneFromPlan } from '@core/ai-plan'
+import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, type AiConfig } from '@core/ai-client'
 import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
 import { BANK_PROBLEMS, bankCategoryName, bankStats, makeMineProblem, visibleCategories, type BankProblem } from '@core/bank'
@@ -93,6 +95,12 @@ export type AppHost = {
   prompt?: (opts: { title: string; placeholder?: string; value?: string }, done: (text: string | null) => void) => void
   /** 本地持久化：不实现就只在内存里活着（建模库、我导入的题目都存这里） */
   storage?: { load: () => string | null; save: (value: string) => void }
+  /**
+   * AI 设置（API key / 模型 / 端点）的本地存储。
+   * **和建模库分开存**：key 是凭据，不该混进会被分享/导出的数据里。
+   * 不实现 → AI 入口显示「当前壳不支持」。
+   */
+  ai?: { load: () => string | null; save: (value: string | null) => void }
   /** 小程序右上角有原生胶囊菜单，顶栏不再放分享键 */
   hideShare?: boolean
   toast?: (text: string) => void
@@ -111,6 +119,22 @@ export type AppOptions = {
 }
 
 type Tool = 'select' | 'pen' | 'fieldE' | 'fieldB' | 'connect' | 'ink' | 'eraser' | 'hand'
+
+/** 本地存的 AI 设置：坏数据就当没配，别让一段脏 JSON 把整个 App 弄崩 */
+function parseAiConfig(raw: string | null): AiConfig | null {
+  if (!raw) return null
+  try {
+    const o = JSON.parse(raw) as Partial<AiConfig>
+    if (!o || typeof o.key !== 'string' || !o.key.trim()) return null
+    return {
+      key: o.key.trim(),
+      model: typeof o.model === 'string' && o.model.trim() ? o.model.trim() : DEFAULT_AI_CONFIG.model,
+      endpoint: typeof o.endpoint === 'string' && o.endpoint.trim() ? o.endpoint.trim() : DEFAULT_AI_CONFIG.endpoint,
+    }
+  } catch {
+    return null
+  }
+}
 
 type DragState =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -240,6 +264,12 @@ export class App {
   selectedFieldId: string | null = null
   /** 组件库面板（从场景里存下来的组件） */
   private componentsOpen = false
+  /** AI 设置（key 只在本机）；null = 没配，生成走规则解析 */
+  private aiConfig: AiConfig | null = null
+  /** AI 设置面板是否打开 */
+  private aiOpen = false
+  /** 正在等 AI 返回（防重复点） */
+  private aiBusy = false
 
   constructor(opts: AppOptions) {
     this.ctx = opts.ctx
@@ -255,6 +285,7 @@ export class App {
     } catch {
       this.library = emptyLibrary()
     }
+    this.aiConfig = parseAiConfig(this.host.ai?.load?.() ?? null)
   }
 
   // -------------------------------------------------------------------------
@@ -284,6 +315,8 @@ export class App {
     else if (this.mode === 'bank') this.renderBank()
     else if (this.mode === 'library') this.renderLibrary()
     else this.renderSceneMode()
+    // AI 设置是全局弹层：哪个页面都能打开，画在所有内容之上
+    if (this.aiOpen) this.renderAiSheet()
     if (this.toastText && now < this.toastUntil) {
       // 画布上放在图表上方，题库/建模库页贴着底部切换栏
       const chart = this.chartRect()
@@ -1425,6 +1458,10 @@ if (id) this.ensureBodyVisible(id)
   }
 
   key(key: string, ctrl = false, shift = false): void {
+    if (key === 'Escape' && this.aiOpen) {
+      this.aiOpen = false
+      return
+    }
     if (key === 'Escape' && this.componentsOpen) {
       this.componentsOpen = false
       return
@@ -3709,6 +3746,12 @@ const focus = this.focusBody(this.doc)
     }
     this.host.askProblem((text) => {
       if (!text) return { ok: false, message: '' }
+      // 配了 AI 就是异步的：先把弹层关掉，结果用 toast + 自动进画布反馈。
+      // 不在这里 await，因为壳的弹层接口是同步返回。
+      if (this.aiReady()) {
+        void this.generateAsync(text)
+        return { ok: true, message: 'AI 正在读题…' }
+      }
       return this.generateFromText(text)
     })
   }
@@ -3716,9 +3759,49 @@ const focus = this.focusBody(this.doc)
   /**
    * 题目文本 → 模型 → 存进建模库 → 打开画布。
    * 失败时**不假装**：说明缺什么，并把题存进「我的题目」方便以后重试。
+   *
+   * 这是**规则解析**那条路（离线、确定性）。配了 AI 的壳走 `generateAsync`。
    */
   generateFromText(text: string, problemId?: string): { ok: boolean; message: string } {
-    const r = parseProblem(text)
+    return this.commitGenerated(parseProblem(text), text, problemId, 'rules')
+  }
+
+  /**
+   * 配了 AI 就走 AI：让模型决定用哪个场景、填哪些参数、补哪些假设。
+   *
+   * 三道保险，保证「AI 挂了不比没有 AI 更差」：
+   *   1. 没配 key / 当前壳不支持 → 直接走规则解析；
+   *   2. 请求失败（超时、余额、JSON 不合法、选了不存在的场景）→ 记一条 toast，回退规则解析；
+   *   3. AI 明确说 unsupported → **不回退**（回退等于把它的判断推翻），按拒绝处理。
+   */
+  async generateAsync(text: string, problemId?: string): Promise<{ ok: boolean; message: string }> {
+    if (!this.aiReady() || this.aiBusy) {
+      if (this.aiBusy) return { ok: false, message: 'AI 正在读题，稍等' }
+      return this.generateFromText(text, problemId)
+    }
+    this.aiBusy = true
+    this.toast(`AI 正在读题（${this.aiConfig!.model}）…`)
+    try {
+      const r = await askPlan(this.aiConfig!, text)
+      if (!r.ok) {
+        this.toast(`AI 没给出可用的模型（${r.error}），已改用规则解析`)
+        return this.generateFromText(text, problemId)
+      }
+      const parsed = sceneFromPlan(r.plan)
+      return this.commitGenerated(parsed, text, problemId, 'ai', r.ms)
+    } finally {
+      this.aiBusy = false
+    }
+  }
+
+  /** 把一次生成结果落到库里并打开。AI 和规则解析共用这一段，避免两条路各写一遍。 */
+  private commitGenerated(
+    r: ReturnType<typeof parseProblem>,
+    text: string,
+    problemId: string | undefined,
+    source: 'ai' | 'rules',
+    ms?: number,
+  ): { ok: boolean; message: string } {
     if (!r.ok) {
       const message = [r.error, ...r.hints].join(' ')
       if (!problemId) {
@@ -3745,9 +3828,133 @@ const focus = this.focusBody(this.doc)
     // openModel → loadScene 会把 fromProblem 清掉，所以要在它之后置位：
     // 这份场景确实是「题目生成的初稿」，舞台上得标出来。
     this.fromProblem = true
-    this.toast(`已生成「${problem?.title ?? r.scene.meta.title}」· 已存进建模库`)
+    const how = source === 'ai' ? `AI · ${this.aiConfig?.model ?? ''}` : '规则解析'
+    const took = ms !== undefined ? ` · ${(ms / 1000).toFixed(1)}s` : ''
+    this.toast(`已生成「${problem?.title ?? r.scene.meta.title}」（${how}${took}）· 已存进建模库`)
     return { ok: true, message: `已生成「${r.scene.meta.title}」` }
   }
+
+  // ---- AI 设置 ----
+
+  aiReady(): boolean {
+    return aiConfigReady(this.aiConfig)
+  }
+
+  /** 用户页「AI 建模」那一行显示什么 */
+  aiLabel(): string {
+    if (!this.host.ai) return '当前壳不支持'
+    if (!this.aiReady()) return '未配置 · 用规则解析'
+    return `${this.aiConfig!.model} · 已就绪`
+  }
+
+  openAiSettings(): void {
+    this.aiOpen = true
+  }
+
+  /** 改 key：直接用壳的输入框（Web 是 DOM 弹层，小程序是原生 modal） */
+  private editAiKey(): void {
+    if (!this.host.ai) {
+      this.toast('这个壳没有本地存储，存不了 key')
+      return
+    }
+    this.host.prompt?.(
+      { title: '粘贴 API Key', placeholder: '只存在这台设备上', value: this.aiConfig?.key ?? '' },
+      (v) => {
+        if (v === null) return
+        const key = v.trim()
+        if (!key) return
+        this.aiConfig = { ...(this.aiConfig ?? DEFAULT_AI_CONFIG), key }
+        this.persistAi()
+        this.toast('Key 已保存（只在本机）')
+      },
+    )
+  }
+
+  private editAiModel(): void {
+    this.host.prompt?.(
+      { title: '模型名', placeholder: 'glm-4.6', value: this.aiConfig?.model ?? DEFAULT_AI_CONFIG.model },
+      (v) => {
+        if (v === null) return
+        const model = v.trim()
+        if (!model) return
+        // 没配过 key 时先存成空 key：aiReady() 会返回 false，生成仍走规则解析
+        this.aiConfig = { key: this.aiConfig?.key ?? '', ...DEFAULT_AI_CONFIG, ...this.aiConfig, model }
+        this.persistAi()
+        this.toast(`模型改为 ${model}`)
+      },
+    )
+  }
+
+  private clearAi(): void {
+    this.aiConfig = null
+    this.persistAi()
+    this.toast('已清除 AI 设置，生成改回规则解析')
+  }
+
+  private persistAi(): void {
+    try {
+      this.host.ai?.save?.(this.aiConfig ? JSON.stringify(this.aiConfig) : null)
+    } catch {
+      /* 隐私模式下可能抛，忽略 */
+    }
+  }
+
+  private renderAiSheet(): void {
+    const W = this.width
+    const H = this.height
+    const ctx = this.ctx
+    ctx.save()
+    ctx.fillStyle = 'rgba(29,32,37,0.42)'
+    ctx.fillRect(0, 0, W, H)
+    ctx.restore()
+    this.ui.add({ id: 'ai:backdrop', rect: { x: 0, y: 0, w: W, h: H }, onClick: () => (this.aiOpen = false) })
+
+    const w = Math.min(W - 40, 400)
+    const h = 300
+    const r: Rect = { x: (W - w) / 2, y: (H - h) / 2, w, h }
+    this.ui.card(r, { radius: 16, fill: THEME.card, stroke: THEME.panelLine, shadow: true })
+    this.ui.add({ id: 'ai:card', rect: r })
+    this.ui.text('AI 建模', r.x + 20, r.y + 28, { size: 14, weight: 700 })
+    this.ui.text('让模型决定用哪个场景、填哪些参数', r.x + 20, r.y + 48, { size: 9.5, color: THEME.inkFaint })
+    this.ui.iconButton({ x: r.x + r.w - 44, y: r.y + 12, w: 30, h: 30 }, 'close', {
+      onClick: () => (this.aiOpen = false),
+    })
+
+    const rows: Array<{ label: string; value: string; onClick: () => void }> = [
+      { label: 'API Key', value: this.aiConfig?.key ? `${this.aiConfig.key.slice(0, 6)}…${this.aiConfig.key.slice(-4)}` : '未设置', onClick: () => this.editAiKey() },
+      { label: '模型', value: this.aiConfig?.model ?? DEFAULT_AI_CONFIG.model, onClick: () => this.editAiModel() },
+    ]
+    let y = r.y + 72
+    for (const row of rows) {
+      this.ui.text(row.label, r.x + 20, y + 14, { size: 10.5, weight: 600, color: THEME.inkSoft })
+      this.ui.text(row.value, r.x + 90, y + 14, { size: 10.5, mono: true, maxWidth: r.w - 130 })
+      const rr: Rect = { x: r.x + 12, y, w: r.w - 24, h: 34 }
+      this.ui.add({ id: `ai:${row.label}`, rect: rr, cursor: 'pointer', onClick: row.onClick })
+      y += 38
+    }
+
+    this.ui.text('Key 只存在这台设备上，不上传、不进仓库。', r.x + 20, y + 6, { size: 9, color: THEME.inkFaint })
+    this.ui.text('浏览器直连厂商接口会被跨域拦住，所以走本地转发（npm run dev 已配好）。', r.x + 20, y + 22, {
+      size: 9,
+      color: THEME.inkFaint,
+      maxWidth: r.w - 40,
+    })
+
+    if (this.aiConfig) {
+      this.ui.pillButton({ x: r.x + 20, y: r.y + h - 48, w: 96, h: 32 }, '清除', {
+        size: 10.5,
+        weight: 600,
+        onClick: () => this.clearAi(),
+      })
+    }
+    this.ui.pillButton({ x: r.x + r.w - 116, y: r.y + h - 48, w: 96, h: 32 }, '完成', {
+      active: true,
+      size: 10.5,
+      weight: 650,
+      onClick: () => (this.aiOpen = false),
+    })
+  }
+
 
   /** 打开库里某个模型 */
   openModel(id: string): void {
@@ -3766,7 +3973,16 @@ const focus = this.focusBody(this.doc)
       this.openModel(existing.id)
       return
     }
-    this.generateFromText(p.text, problemId)
+    this.generateAny(p.text, problemId)
+  }
+
+  /** 供页面调用：有 AI 走 AI（异步），没有就同步走规则 */
+  generateAny(text: string, problemId?: string): { ok: boolean; message: string } {
+    if (this.aiReady()) {
+      void this.generateAsync(text, problemId)
+      return { ok: true, message: 'AI 正在读题…' }
+    }
+    return this.generateFromText(text, problemId)
   }
 
   // ---- 文件夹 ----

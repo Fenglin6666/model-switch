@@ -43,6 +43,11 @@ export type PagesHost = {
   openProblemDetail(id: string): void
   openModel(id: string): void
   generateFromText(text: string, problemId?: string): { ok: boolean; message: string }
+  /** 有 AI 走 AI（异步，结果用 toast + 自动进画布反馈），没有就同步走规则 */
+  generateAny(text: string, problemId?: string): { ok: boolean; message: string }
+  /** 用户页「AI 建模」那一行显示的副标题 */
+  aiLabel(): string
+  openAiSettings(): void
   newFolder(): void
   moveTo(modelId: string, folderId: string): void
   removeModel(modelId: string): void

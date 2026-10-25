@@ -152,7 +152,7 @@ const user = await page.evaluate(() => {
   const a = window.app
   return { mode: a.mode, rows: a.ui.hits.filter((h) => h.id && h.id.startsWith('user:')).length }
 })
-check('用户页有数据管理入口', user.mode === 'user' && user.rows === 2, JSON.stringify(user))
+check('用户页有数据管理入口（AI 建模 + 两个清空）', user.mode === 'user' && user.rows === 3, JSON.stringify(user))
 await shot('224-user')
 
 await tap('user:清空建模库')
@@ -276,6 +276,65 @@ check(
   migrated.models === 1 && migrated.title === '旧 key 里的模型' && migrated.oldGone && migrated.newLen > 100,
   JSON.stringify(migrated),
 )
+
+// 10. AI 设置：入口在用户页；key 存本地；坏 key 时必须回退规则解析而不是彻底失败。
+//     这里不打真接口（测试不该依赖外部服务和余额），只验「状态机 + 回退」。
+await page.evaluate(() => {
+  localStorage.removeItem('slogan.ai.v1')
+  localStorage.removeItem('slogan.library.v1')
+})
+await page.reload()
+await page.waitForFunction(() => !!window.app)
+await wait(400)
+
+const aiEntry = await page.evaluate(() => {
+  const a = window.app
+  a.toUser()
+  a.frame(0, 0)
+  const hasRow = a.ui.hits.some((h) => h.id === 'user:AI 建模')
+  a.openAiSettings()
+  a.frame(0, 0)
+  const sheet = a.ui.hits.some((h) => h.id === 'ai:card')
+  const hasKey = a.ui.hits.some((h) => h.id === 'ai:API Key')
+  a.aiOpen = false
+  return { hasRow, sheet, hasKey, label: a.aiLabel(), ready: a.aiReady() }
+})
+check(
+  '用户页有「AI 建模」入口，点开是设置面板（未配置时走规则解析）',
+  aiEntry.hasRow && aiEntry.sheet && aiEntry.hasKey && !aiEntry.ready,
+  JSON.stringify(aiEntry),
+)
+await shot('250-user-ai')
+
+// 写入一个**假的** key：验证「配了但接口挂了」时的回退
+await page.evaluate(() => {
+  localStorage.setItem('slogan.ai.v1', JSON.stringify({ key: 'bad-key.test', model: 'glm-4.6', endpoint: '/llm/chat/completions' }))
+})
+await page.reload()
+await page.waitForFunction(() => !!window.app)
+await wait(400)
+const configured = await page.evaluate(() => ({ ready: window.app.aiReady(), label: window.app.aiLabel() }))
+check('填了 key 之后状态变成已就绪', configured.ready && configured.label.includes('glm-4.6'), JSON.stringify(configured))
+
+const fallback = await page.evaluate(async () => {
+  const a = window.app
+  const before = a.library.models.length
+  const r = await a.generateAsync('倾角 30° 的斜面长 2 m，动摩擦因数 0.25，小滑块从顶端由静止下滑，求到底端的速度。')
+  const m = a.library.models[0]
+  return {
+    ok: r.ok,
+    grew: a.library.models.length > before,
+    preset: m?.scene?.meta?.preset ?? null,
+    message: r.message,
+  }
+})
+check(
+  'AI 请求失败 → 回退规则解析，照样建出模型（不比没有 AI 更差）',
+  fallback.ok && fallback.grew && fallback.preset === 'incline',
+  JSON.stringify(fallback),
+)
+
+await page.evaluate(() => localStorage.removeItem('slogan.ai.v1'))
 
 const failed = results.filter((r) => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} 通过`)

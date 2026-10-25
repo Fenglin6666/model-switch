@@ -349,7 +349,7 @@ export function renderProblemDetail(h: PagesHost): void {
     ? () => h.toast('等生成器覆盖了这类题，这道题就能直接建')
     : built
       ? () => h.openModel(built.id)
-      : () => h.generateFromText(p.text, p.id)
+      : () => h.generateAny(p.text, p.id)
   h.ui.pillButton(btn, unsupported ? '暂不支持' : built ? '打开模型 →' : '生成建模 →', {
     active: !unsupported,
     size: unsupported ? 11 : 11.5,

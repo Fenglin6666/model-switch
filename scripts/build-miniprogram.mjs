@@ -38,6 +38,9 @@ const result = await build({
   platform: 'neutral',
   target: 'es2017',
   minify: true,
+  // 默认 charset 是 ascii：中文会被转义成 \uXXXX（一个汉字 3 字节变 6 字节）。
+  // 这个 App 的界面文案全是中文，转义后白白多出几十 KB。
+  charset: 'utf8',
   legalComments: 'none',
   sourcemap: false,
   outfile,

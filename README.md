@@ -65,8 +65,8 @@ npm test             # 145 个单测，7 秒
 npm run typecheck
 npm run doc:check    # 文档行数与代码一致
 npm run validate     # 三项技术验证（摩擦覆写 / 洛伦兹漂移 / Canvas 性能）
-npm run build        # Web 产物：约 454 KB / gzip 125 KB
-npm run build:mp     # 小程序包：约 467 KB → apps/miniprogram/miniprogram/utils/app.js
+npm run build        # Web 产物：约 469 KB / gzip 130 KB
+npm run build:mp     # 小程序包：约 459 KB → apps/miniprogram/miniprogram/utils/app.js
 ```
 
 需要 Node ≥ 20。实测环境：Node 24 / Chrome / Windows。
@@ -113,6 +113,24 @@ npm run build:mp     # 小程序包：约 467 KB → apps/miniprogram/miniprogra
 
 > 当前是**离线规则解析**，不是大模型。9 道真题实测：1 道建成、8 道明确拒绝——这是**有意的边界**，
 > 见 [docs/PHYSICS.md](docs/PHYSICS.md) §5。
+
+### 配了 key 就由模型来决定怎么建
+
+规则解析只认关键词，遇到「斜面 → 水平 → 圆弧」这种多过程就拒绝。配一个 API key 之后，
+改由模型读题、决定用哪个场景、填哪些参数、补哪些假设：
+
+- **入口**：用户页 →「AI 建模」→ 粘贴 key（只存在这台设备上，不上传、不进仓库）。
+- **它只能做决定，不能凭空写场景**：要么选一个已有模型（走 `layout()`，几何一定合法），
+  要么用基元拼一串阶段（斜面/水平/圆弧/上坡），要么明确说建不了。**没有「大概差不多」这个选项。**
+- **三道保险**：没配 key → 规则解析；请求失败 → toast 说明并回退规则解析；模型说建不了 → 按拒绝处理（不回退）。
+- **实测**（glm-4.6）：6 道题 6/6 符合预期，其中「斜面→粗糙水平→光滑圆弧」被拼成了 3 段多过程——
+  这正是规则解析一定拒绝的那类题。
+
+> 浏览器直连厂商接口会被跨域预检拦住，所以走一个转发层：开发期 `npm run dev` 已配好，
+> 上线需要一个只透传 `Authorization` 的转发（服务端不存 key）。小程序端不支持（无法配置域名白名单）。
+> 细节、实测数据与已知局限见 [docs/AI.md](docs/AI.md)。
+
+![AI 建模：用户页里填 key，只存本机](screenshots/251-ai-sheet.png)
 
 ## 建模库（收藏夹）
 
@@ -302,6 +320,7 @@ Web 和小程序共用同一份 `@ui/app`，只换宿主。安全区由宿主通
 |---|---|
 | [docs/CODEMAP.md](docs/CODEMAP.md) | 想改代码，先看这个（含 Scene 数据模型、文件地图、常见改动从哪下手） |
 | [docs/PHYSICS.md](docs/PHYSICS.md) | 怀疑数字不对，或想知道哪些题建不了 |
+| [docs/AI.md](docs/AI.md) | 想接 AI 建模 / 改提示词 / 上线转发层 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 想知道「为什么这么做」，以及哪些当初的判断被推翻了 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | 想知道「该做什么」的依据（真题分布 / 开源 / 竞品 / 定位） |
 | [docs/DRAWING.md](docs/DRAWING.md) | 改画布、识别、视觉语法、批注 |

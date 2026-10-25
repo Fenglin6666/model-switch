@@ -15,13 +15,13 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 3923 |
+| `packages/ui/src/app.ts` | 4139 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 365 |
 | `packages/ui/src/pages/library.ts` | 275 |
-| `packages/ui/src/pages/user.ts` | 173 |
-| `packages/ui/src/pages/host.ts` | 54 |
+| `packages/ui/src/pages/user.ts` | 178 |
+| `packages/ui/src/pages/host.ts` | 59 |
 | `packages/ui/src/pages/shared.ts` | 57 |
 | `packages/ui/src/scene-bounds.ts` | 37 |
 | `packages/ui/src/widgets.ts` | 496 |
@@ -30,18 +30,20 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/core/src/presets.ts` | 1525 |
 | `packages/core/src/scene.ts` | 499 |
 | `packages/core/src/problem.ts` | 279 |
+| `packages/core/src/ai-plan.ts` | 389 |
+| `packages/core/src/ai-client.ts` | 116 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
 | `packages/core/src/library.ts` | 246 |
 | `packages/core/src/components.ts` | 212 |
-| `packages/core/src/params.ts` | 70 |
+| `packages/core/src/params.ts` | 72 |
 | `packages/core/src/criterion.ts` | 297 |
 | `packages/core/src/serialize.ts` | 251 |
 | `packages/render/src/renderer.ts` | 1244 |
 | `packages/render/src/camera.ts` | 253 |
 | `packages/physics/src/simulation.ts` | 841 |
 | `packages/physics/src/forces.ts` | 126 |
-| `apps/web/src/main.ts` | 266 |
+| `apps/web/src/main.ts` | 285 |
 | `apps/miniprogram/miniprogram/pages/index/index.js` | 179 |
 
 > 这张表由 `node scripts/doc-facts.mjs --write` 生成，`node scripts/doc-facts.mjs` 校验。
@@ -112,6 +114,7 @@ D:\Slogan
 ├─ docs/
 │  ├─ CODEMAP.md                本文件（行数自动校验）
 │  ├─ PHYSICS.md                物理正确性：断言、实测数字、边界
+│  ├─ AI.md                     AI 建模：三种模式、转发层、key 安全、局限
 │  ├─ DRAWING.md                画布：识别 / 场 / 视觉语法 / 批注
 │  ├─ COMPONENTS.md             组件：从使用中沉淀
 │  ├─ DECISIONS.md              关键取舍、被推翻的结论、已废弃的方案
@@ -122,7 +125,9 @@ D:\Slogan
 │  ├─ core/src/
 │  │  ├─ scene.ts               Scene 类型 / JSON Pointer / 材质对
 │  │  ├─ presets.ts             18 个预置场景 + layout（生成器的落点）
-│  │  ├─ problem.ts             题干 → Scene 的规则解析（v0）
+│  │  ├─ problem.ts             题干 → Scene 的规则解析（v0，离线兜底）
+│  │  ├─ ai-plan.ts             LLM 的决定层：目录 / 提示词 / 解析 / 校验（纯函数）
+│  │  ├─ ai-client.ts           调接口（key 由前端带，服务端不存）
 │  │  ├─ recognize.ts           手绘一笔 → 圆/矩形/多边形/直线/折线
 │  │  ├─ bank.ts                题库：分类 + 15 道题 + 每条的 expect
 │  │  ├─ library.ts             建模库：文件夹 / 模型 / 我的题目 / 组件 + 持久化
@@ -163,7 +168,8 @@ D:\Slogan
 │  ├─ mp-verify.mjs             小程序自动化验证（15 项）
 │  ├─ shots-editor.mjs          编辑器截图（3 项：README 的 240/241）
 │  ├─ shots-draw.mjs            画图 + 组件验收（25 项）
-│  ├─ shots-bank.mjs            题库/详情/建模库/用户页 + 改名迁移（16 项）
+│  ├─ shots-bank.mjs            题库/详情/建模库/用户页 + 改名迁移 + AI 回退（19 项）
+│  ├─ ai-check.mjs              打真实接口验 6 道题（需 LLM_KEY 环境变量）
 │  ├─ shots-ink.mjs             批注验收（9 项）
 │  └─ validate/                 三个前置技术验证（npm run validate）
 └─ screenshots/                 桌面端 + 小程序截图（编号越大越新）
@@ -175,6 +181,8 @@ D:\Slogan
 |---|---|
 | 加一道题库题目 | `core/bank.ts` 加一条（带 `expect`），`tests/bank.test.ts` 会验证「说能建的是不是真能建」 |
 | 改题干解析规则 | `core/problem.ts` 的 `parseProblem` |
+| 改 AI 提示词 / 模型目录 | `core/ai-plan.ts`（`AI_SYSTEM_PROMPT`，目录从 PRESETS 自动派生） |
+| 改 AI 请求（端点/超时/参数） | `core/ai-client.ts` 的 `askPlan` |
 | 改手绘识别阈值 | `core/recognize.ts`（圆度 / 面积占比 / 直线度） |
 | 改场笔手势 | `ui/app.ts` 的 `finishFieldStroke` / `commitField` |
 | 加一种判据 | `core/scene.ts` 的 `Criterion` + `core/criterion.ts` 的 `updateOne` |

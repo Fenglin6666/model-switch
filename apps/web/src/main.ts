@@ -8,6 +8,8 @@ if (!ctx) throw new Error('Canvas 2D 不可用')
 // 存储 key。改名前的旧 key 还要读一次，否则已经存下的建模/组件会「凭空消失」。
 const STORE_KEY = 'slogan.library.v1'
 const LEGACY_KEY = 'model-switch.library.v1'
+// AI 设置单独存：key 是凭据，不该混进会被导出/分享的建模库
+const AI_KEY = 'slogan.ai.v1'
 
 let dpr = Math.min(window.devicePixelRatio || 1, 3)
 let width = window.innerWidth
@@ -30,6 +32,23 @@ const app = new App({
       history.replaceState(null, '', url)
     },
     toast: (text) => console.log('[toast]', text),
+    ai: {
+      load: () => {
+        try {
+          return localStorage.getItem(AI_KEY)
+        } catch {
+          return null
+        }
+      },
+      save: (value) => {
+        try {
+          if (value === null) localStorage.removeItem(AI_KEY)
+          else localStorage.setItem(AI_KEY, value)
+        } catch {
+          /* 隐私模式忽略 */
+        }
+      },
+    },
     // 建模库 / 我导入的题目都存在浏览器本地，零后端
     storage: {
       load: () => localStorage.getItem(STORE_KEY) ?? localStorage.getItem(LEGACY_KEY),

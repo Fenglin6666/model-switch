@@ -16,6 +16,16 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    proxy: {
+      // 厂商 API 的跨域预检不通过（OPTIONS 不回 Access-Control-Allow-Origin），
+      // 浏览器直连会被拦。开发期由这里转发；Authorization 由前端带，服务端不存 key。
+      '/llm': {
+        target: 'https://open.bigmodel.cn',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/llm/, '/api/coding/paas/v4'),
+      },
+    },
   },
   build: {
     target: 'es2020',

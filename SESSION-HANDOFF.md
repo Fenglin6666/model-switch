@@ -44,7 +44,8 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 
 | 领域 | 有 | 入口 |
 |---|---|---|
-| 题目 → 建模 | `parseProblem` 规则解析 v0，8 类模型；失败明确拒绝 | 题库首页 / 「生成建模」贴题干 |
+| 题目 → 建模 | 有 key 走 AI（选场景 / 拼阶段 / 明确拒绝）；没 key 或失败回退 `parseProblem` 规则解析 v0 | 题库首页 / 「生成建模」贴题干 |
+| AI 建模 | BYO-key，存本机；三种 mode（preset / chain / unsupported）；失败自动回退规则解析 | 用户页 →「AI 建模」；`docs/AI.md` |
 | 题库 | 15 道（8 自编示例 + 7 真题），按 力学/电磁学/热学 分类，每条带真实可建状态 | 底部「题库」 |
 | 建模库 | 文件夹自建自分类、本地持久化、60 上限、离开画布写回同一条 | 底部「模型」 |
 | 用户页 | 本地数据统计、清空建模库/我的题目（都先确认） | 底部「用户」 |
@@ -76,16 +77,17 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 ## 5. 验证
 
 ```bash
-npm test                      145 passed
+npm test                      176 passed
 npm run typecheck             通过
 npm run doc:check             28 个文件一致
 node scripts/shots-editor.mjs 3/3    # 编辑器截图（README 的 240/241）+ 8 工具 + 「存为组件」入口
 node scripts/shots-draw.mjs   25/25  # 识别 / 吸附 / 手柄 / 场两按钮 / 物理 / 存组件→插入
 node scripts/shots-ink.mjs    9/9    # 批注
-node scripts/shots-bank.mjs   16/16  # 三栏 / 详情 / 生成 / 暂不支持 / 清空 / 持久化 / 手机尺寸 / 改名迁移
+node scripts/shots-bank.mjs   19/19  # 三栏 / 详情 / 生成 / 暂不支持 / 清空 / 持久化 / 手机尺寸 / 改名迁移 / AI 设置与回退
+LLM_KEY=xxx node scripts/ai-check.mjs   # 打真实接口：6 道题看 AI 怎么决定（需 dev server）
 node scripts/mp-verify.mjs    15/15  # 小程序（需 9420 端口）
-npm run build                 454 KB / gzip 125 KB
-npm run build:mp              467 KB
+npm run build                 469 KB / gzip 130 KB
+npm run build:mp              459 KB
 ```
 
 **跑验收的两个注意事项**：
@@ -162,6 +164,7 @@ npm run build:mp              467 KB
 | [README.md](README.md) | 产品是什么、怎么跑、能力、边界 |
 | [docs/CODEMAP.md](docs/CODEMAP.md) | Scene 数据模型、文件地图、常见改动从哪下手 |
 | [docs/PHYSICS.md](docs/PHYSICS.md) | 物理断言、实测数字、能建/不能建的边界 |
+| [docs/AI.md](docs/AI.md) | AI 建模：三种模式、转发层、key 安全、已知局限 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 关键取舍、被推翻的结论、已废弃的方案 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | 真题分布 / 开源生态 / 竞品 / 定位（含可信度标注） |
 | [docs/DRAWING.md](docs/DRAWING.md) | 画布：识别阈值、场笔手势、视觉语法、批注 |
@@ -174,12 +177,13 @@ npm run build:mp              467 KB
 ```
 项目在 D:/Slogan（产品名 Slogan）。先读 SESSION-HANDOFF.md，再读 README、docs/CODEMAP.md。
 
-现状：v5.13。底部三栏：用户 / 题库 / 模型。
+现状：v5.14。底部三栏：用户 / 题库 / 模型。
 - 题库：点一张题 → 题目详情 → 按「生成建模」→ 模型进「模型」页（收藏夹，本地持久化）。
 - 画布：没有预置组件库。笔一落就识别（圆/矩形/多边形/直线/折线）；电场/磁场是两个独立按钮，
   按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
 - 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。
-145 个测试；小程序包 467 KB。
+- AI：用户页填 API key（只存本机），生成改由模型决定用哪个场景/怎么拼阶段；没 key 或请求失败自动回退规则解析。
+176 个测试；小程序包 459 KB。AI 建模（自带 key，失败回退规则解析）已接。
 app.ts 已从 4772 行拆到 3923：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），
 剩余拆分计划见 docs/REFACTOR-PLAN.md。
 明确否掉的：条件表单、空白画布、首页示例卡片墙、预置组件库、形状调色板、A/B 对照、找临界——别加回来。

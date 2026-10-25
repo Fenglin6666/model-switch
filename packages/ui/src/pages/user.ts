@@ -32,7 +32,7 @@ export function renderUser(h: PagesHost): void {
   const statRows = Math.ceil(4 / statCols)
   const statH = statRows * 48
   const avail = h.tabBarRect().y - 8 - (bar.y + 60)
-  const needH = 24 + 18 + 18 + 26 + statH + 16 + 22 + 2 * 50 + 22 + 20 + 18 + 18 + 18
+  const needH = 24 + 18 + 18 + 26 + statH + 16 + 22 + 3 * 50 + 22 + 20 + 18 + 18 + 18
   const card: Rect = { x: bar.x, y: bar.y + 60, w: bar.w, h: Math.min(avail, needH) }
   h.ui.card(card, { radius: 14, fill: THEME.card, stroke: THEME.hairline })
   const pad = narrow ? 16 : 22
@@ -65,6 +65,11 @@ export function renderUser(h: PagesHost): void {
   h.ui.text('数据管理', card.x + pad, y, { size: 11, weight: 700, color: THEME.inkSoft })
   y += 22
   const rows: Array<{ label: string; sub: string; danger?: boolean; onClick: () => void }> = [
+    {
+      label: 'AI 建模',
+      sub: h.aiLabel(),
+      onClick: () => h.openAiSettings(),
+    },
     {
       label: '清空建模库',
       sub: '删掉所有模型，文件夹和我的题目保留',

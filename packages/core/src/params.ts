@@ -29,7 +29,9 @@ export const PARAM_META: Record<string, ParamMeta> = {
   k: { key: 'k', label: '劲度系数 k', unit: 'N/m', min: 5, max: 200, step: 5, decimals: 0 },
   L: { key: 'L', label: '摆长 L', unit: 'm', min: 0.2, max: 4, step: 0.1, decimals: 1 },
   l: { key: 'l', label: '板长 l', unit: 'm', min: 0.4, max: 2, step: 0.1, decimals: 1 },
-  h: { key: 'h', label: '高度 h', unit: 'm', min: 0.2, max: 3, step: 0.1, decimals: 1 },
+  // h 上限原来是 3 m，但平抛/悬崖题经常到十几米——滑杆拖不到就没法改。
+  // 注意：这里的区间是**滑杆能拖到哪儿**，不是物理上限。
+  h: { key: 'h', label: '高度 h', unit: 'm', min: 0.2, max: 20, step: 0.1, decimals: 1 },
   E: { key: 'E', label: '电场 E', min: 0, max: 120, step: 5, decimals: 0 },
   B: { key: 'B', label: '磁感应强度 B', min: 0, max: 6, step: 0.5, decimals: 1 },
   q: { key: 'q', label: '电荷量 q', min: 0.2, max: 3, step: 0.2, decimals: 1 },
