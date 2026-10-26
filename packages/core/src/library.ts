@@ -105,12 +105,6 @@ export function deleteFolder(lib: Library, folderId: string): Library {
   }
 }
 
-export function renameFolder(lib: Library, folderId: string, name: string): Library {
-  const clean = clampName(name)
-  if (!clean) return lib
-  return { ...lib, folders: lib.folders.map((f) => (f.id === folderId ? { ...f, name: clean } : f)) }
-}
-
 /** 存一个模型；超过上限返回 error（UI 要明说，不能静默丢） */
 export function addModel(
   lib: Library,

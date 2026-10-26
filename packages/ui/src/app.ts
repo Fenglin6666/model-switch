@@ -5,7 +5,7 @@ import { Camera } from '@render/camera'
 import { pickBody, renderScene, type BodyVisual, type VisualState } from '@render/renderer'
 import { drawInk, inkHitTest, shouldSample, type InkStroke } from '@render/ink'
 import { THEME, font, rgba, roundRect } from '@render/theme'
-import { bodyAABB, pointInShape, renderGeometries, shapeArea } from '@core/shapes'
+import { bodyAABB, pointInShape, renderGeometries, scalePointsToLength, shapeArea, shapeLength } from '@core/shapes'
 import { clamp, rot, simplifyPath, type Vec2 } from '@core/math'
 import {
   type Body,
@@ -27,6 +27,7 @@ import {
   setAtPath,
 } from '@core/scene'
 import { blankScene, presetById } from '@core/presets'
+import { constraintFields, constraintTitle, isBodyBound, type ConstraintField } from '@core/constraint-fields'
 import { buildChain, defaultChain, stageLabel, type ChainStage, type ChainStageKind } from '@core/chain'
 import { applySnap, findSnap } from '@core/snap'
 import { describeRecognized, recognizeStroke } from '@core/recognize'
@@ -43,7 +44,7 @@ import {
   providerByEndpoint,
   type AiConfig,
 } from '@core/ai-client'
-import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
+import { componentSelection, constraintBodyIds, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
 import { BANK_PROBLEMS, bankCategoryName, bankStats, makeMineProblem, visibleCategories, type BankProblem } from '@core/bank'
 import {
@@ -162,7 +163,7 @@ type DragState =
 const SPEEDS = [1, 0.5, 0.25, 2]
 /**
  * 工具栏只剩「笔」和几种手势，没有组件按钮：
- * 画什么，什么就是组件（识别 + 物理性质），见 docs/DRAWING.md。
+ * 画什么，什么就是组件（识别 + 物理性质），见 docs/ARCHITECTURE.md §6。
  */
 const TOOLS: Array<{ id: Tool; icon: IconName; label: string }> = [
   { id: 'select', icon: 'select', label: '选择 / 拖动' },
@@ -174,19 +175,6 @@ const TOOLS: Array<{ id: Tool; icon: IconName; label: string }> = [
   { id: 'eraser', icon: 'eraser', label: '橡皮擦' },
   { id: 'hand', icon: 'hand', label: '平移' },
 ]
-
-function shapeLength(shape: Extract<Shape, { type: 'polyline' | 'polygon' }>): number {
-  if (shape.type === 'polyline') {
-    let total = 0
-    for (let i = 1; i < shape.points.length; i++) {
-      total += Math.hypot(shape.points[i]!.x - shape.points[i - 1]!.x, shape.points[i]!.y - shape.points[i - 1]!.y)
-    }
-    return total
-  }
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-  for (const p of shape.points) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y) }
-  return Math.max(maxX - minX, maxY - minY)
-}
 
 export class App {
   readonly ctx: CanvasRenderingContext2D
@@ -215,7 +203,7 @@ export class App {
 
   /**
    * 批注墨迹：老师的临时痕迹，**不进 Scene**、不参与物理、不影响分享串。
-   * 点存世界坐标、线宽存屏幕像素（见 docs/DRAWING.md §6）。
+   * 点存世界坐标、线宽存屏幕像素（见 docs/ARCHITECTURE.md §6 §6）。
    * 切场景 / 回选择页时清空。
    */
   ink: InkStroke[] = []
@@ -407,7 +395,7 @@ export class App {
     this.toastText = ''
     this.toastUntil = 0
     this.fromProblem = false
-    // 批注是「这一张图上的临时痕迹」，换场景就清掉（不进 Scene，见 docs/DRAWING.md §6）
+    // 批注是「这一张图上的临时痕迹」，换场景就清掉（不进 Scene，见 docs/ARCHITECTURE.md §6 §6）
     this.ink = []
     this.doc = cloneScene(scene)
     this.presetId = presetId ?? (this.doc.meta.preset && presetById(this.doc.meta.preset) ? this.doc.meta.preset : null)
@@ -610,6 +598,11 @@ const onlyGround = !this.doc.bodies.some((b) => b.id !== 'ground')
       this.rebuild()
       return
     }
+    // Delete 键原来不删场（只有面板上的垃圾桶能删），两条路不一致
+    if (this.selectedFieldId) {
+      this.removeField(this.selectedFieldId)
+      return
+    }
     if (!this.selectedId) return
     if (this.selectedId === 'ground') return
     this.removeBody(this.selectedId)
@@ -617,13 +610,21 @@ const onlyGround = !this.doc.bodies.some((b) => b.id !== 'ground')
 
   private removeBody(id: string): void {
     this.pushHistory()
+    // 约束的引用要按 `constraintBodyIds` 统一清，别一种一种手写：
+    // 原来只清了 track，删掉一个挂绳的球，绳还留在场景里——既不报错，也不起作用，
+    // 用户只会觉得「这根绳怎么没反应」。pulley/prismatic/belt/circuit 同理。
+    const constraints = this.doc.constraints.filter((c) => !constraintBodyIds(c).includes(id))
+    const droppedConstraints = this.doc.constraints.length - constraints.length
     this.doc = {
       ...this.doc,
       bodies: this.doc.bodies.filter((b) => b.id !== id),
-      constraints: this.doc.constraints.filter(
-        (c) => !(c.type === 'track' && (c.bodyId === id || c.centerBodyId === id)),
-      ),
-      observers: this.doc.observers.filter((o) => !('bodyId' in o && o.bodyId === id)),
+      constraints,
+      observers: this.doc.observers.filter((o) => {
+        if ('bodyId' in o && o.bodyId === id) return false
+        // energy 观测器挂的是 bodyIds 数组，漏了它就会算出「少了一个物体」的能量
+        if (o.kind === 'energy' && o.bodyIds.includes(id)) return false
+        return true
+      }),
       criteria: this.doc.criteria.filter(
         (c) =>
           !(
@@ -636,6 +637,7 @@ const onlyGround = !this.doc.bodies.some((b) => b.id !== 'ground')
     if (this.doc.edits?.bodies) delete this.doc.edits.bodies[id]
     if (this.selectedId === id) this.selectedId = null
     this.rebuild()
+    if (droppedConstraints > 0) this.toast(`连同 ${droppedConstraints} 条连接一起删掉了`)
   }
 
   // -------------------------------------------------------------------------
@@ -658,21 +660,6 @@ if (id) this.ensureBodyVisible(id)
     const dock = this.dockRect()
     const need = p.y - (dock.y - 70)
     if (need > 0) this.camera.panBy(0, -Math.min(need, 320))
-  }
-
-  private syncViewToDoc(): void {
-    this.doc = {
-      ...this.doc,
-      world: {
-        ...this.doc.world,
-        view: {
-          ...this.doc.world.view,
-          preset: this.camera.preset,
-          elevation: this.camera.elevation,
-          azimuth: this.camera.azimuth,
-        },
-      },
-    }
   }
 
   // ---- 用户自建组件：从场景里「存」，再插到别处 ----
@@ -1602,21 +1589,6 @@ if (id) this.ensureBodyVisible(id)
     return `b${i}`
   }
 
-  private nextBodyIds(n: number): string[] {
-    const used = new Set(this.doc.bodies.map((b) => b.id))
-    const out: string[] = []
-    let i = 1
-    while (out.length < n) {
-      const id = `b${i}`
-      if (!used.has(id)) {
-        out.push(id)
-        used.add(id)
-      }
-      i++
-    }
-    return out
-  }
-
   /** 组件的分类：地形（不动）/ 物体（会动）/ 轨道（圆?+ 连一个小球） */
   private classifyBody(body: Body, role: 'terrain' | 'object' | 'track'): Body {
     if (role === 'terrain') {
@@ -1784,7 +1756,10 @@ if (id) this.ensureBodyVisible(id)
     let h = 64
     if (this.selectedConstraintId) {
       const c = this.doc.constraints.find((x) => x.id === this.selectedConstraintId)
-      h = c?.type === 'spring' ? 186 : 146
+      // 高度跟着属性表的行数走：以前按类型写死（弹簧 186 / 其余 146），
+      // 加一个字段就画到面板外面。
+      const rows = c ? constraintFields(c).length : 0
+      h = 64 + rows * 52 + 32
     } else if (this.selectedId) {
       const body = findBody(this.doc, this.selectedId)
       const isStatic = !body || body.kind === 'static' || body.kind === 'kinematic'
@@ -2141,6 +2116,10 @@ if (id) this.ensureBodyVisible(id)
     }
 
     // ---- 底部：读数 + 入口（宽屏钉在底部，窄屏跟着内容滚） ----
+    // 记下「内容画到哪儿」，**减掉当前滚动量**才是真实的内容高度。
+    // 不减的话：panelMaxScroll 里含着 panelScroll，滚得越多上限越小，
+    // 两者互相抵消——实测滚到 -206 就停住，而上限本来该是 -422（只滚得动一半）。
+    const contentEnd = y - this.panelScroll
     const foot = this.footLayout(p, narrow, y)
     let linkY = foot.linkY
     if (narrow) {
@@ -2149,7 +2128,9 @@ if (id) this.ensureBodyVisible(id)
     } else {
       this.renderReadouts(p.x + pad, foot.readoutY, innerW, foot.readoutH)
     }
-    this.panelMaxScroll = Math.max(0, y + 40 - (p.y + p.h))
+    // 可滚动的底边是「读数卡的上沿」，不是面板底边：
+    // 用面板底边算的话，最后 100 px 内容永远藏在读数卡后面，怎么滚都看不到。
+    this.panelMaxScroll = Math.max(0, contentEnd + 16 - foot.readoutY)
     this.panelScroll = clamp(this.panelScroll, -this.panelMaxScroll, 0)
 
     const links: Array<[string, () => void]> = [
@@ -2214,86 +2195,106 @@ if (id) this.ensureBodyVisible(id)
     return y
   }
 
-  /** 物体参数：质量 / 摩擦 / 电荷 / 半径或长度 / 角度 / 初速度 */
+  /**
+   * 物体参数（左面板）。
+   *
+   * 三块都由表驱动：属性（body-fields）、尺寸（bodyGeometryControls）、
+   * 机制（constraint-fields）。这里原来是一份手写实现——质量/摩擦/半径/初速度
+   * 各一段，和底部检查器那份各写各的，加一个属性要改两处、还经常只改一处。
+   */
   private renderBodyParams(x: number, y0: number, w: number, body: Body): number {
     let y = y0
     const isStatic = body.kind === 'static' || body.kind === 'kinematic'
-    this.ui.slider({ x, y, w, h: 48 }, {
-      id: 'body-mass',
-      label: '质量 m',
-      value: body.mass ?? 0.5,
-      min: 0.05,
-      max: 5,
-      step: 0.05,
-      unit: ' kg',
-      decimals: 2,
-      onScrubStart: () => this.pushHistory(),
-      onChange: (v) => this.setBodyMass(body.id, v),
-    })
-    y += 56
-    this.ui.slider({ x, y, w, h: 62 }, {
-      id: 'body-mu',
-      label: '摩擦系数 μ',
-      value: body.friction ?? findMaterial(this.doc, body.material)?.mu ?? 0.3,
-      min: 0,
-      max: 0.8,
-      step: 0.01,
-      decimals: 2,
-      hintLeft: '光滑 (0)',
-      hintRight: '粗糙 (0.8)',
-      onScrubStart: () => this.pushHistory(),
-      onChange: (v) => this.setBodyFriction(body.id, v),
-    })
-    y += 74
-    if (body.shape.type === 'circle' || body.shape.type === 'arc') {
-      this.ui.slider({ x, y, w, h: 48 }, {
-        id: 'body-r',
-        label: body.shape.type === 'circle' ? '半径 r' : '圆弧半径 R',
-        value: body.shape.r,
-        min: 0.04,
-        max: 2,
-        step: 0.01,
-        unit: ' m',
-        decimals: 2,
-        onScrubStart: () => this.pushHistory(),
-        onChange: (v) => this.setBodyRadius(body.id, v),
-      })
-      y += 56
-    } else if (body.shape.type === 'polyline' || body.shape.type === 'polygon') {
-      const len = shapeLength(body.shape)
-      this.ui.slider({ x, y, w, h: 48 }, {
-        id: 'body-len',
-        label: '长度 L',
-        value: len,
-        min: 0.2,
-        max: 6,
-        step: 0.05,
-        unit: ' m',
-        decimals: 2,
-        onScrubStart: () => this.pushHistory(),
-        onChange: (v) => this.setBodyLength(body.id, v),
-      })
-      y += 56
+
+    for (const f of bodyFieldRows(this.doc, body)) {
+      this.ui.slider(
+        { x, y, w, h: 48 },
+        {
+          id: `body-${f.key}`,
+          label: f.label,
+          value: f.read(body, this.doc),
+          min: f.min,
+          max: f.max,
+          step: f.step,
+          decimals: f.decimals,
+          unit: f.unit,
+          // 摩擦保留两端的「光滑/粗糙」提示：这是唯一需要语感的一根滑杆
+          hintLeft: f.key === 'friction' ? '光滑' : undefined,
+          hintRight: f.key === 'friction' ? '粗糙' : undefined,
+          onScrubStart: () => {
+            this.playing = false
+            this.pushHistory()
+          },
+          onScrubEnd: () => {},
+          onChange: (v) => {
+            if (f.setter === 'angle') this.setBodyAngle(body.id, v)
+            else if (f.setter === 'mass') this.setBodyMass(body.id, v)
+            else if (f.setter === 'friction') this.setBodyFriction(body.id, v)
+            else if (f.setter === 'charge') this.setBodyCharge(body.id, v)
+            else this.setBodyField(body.id, f.key, v)
+          },
+        },
+      )
+      y += f.key === 'friction' ? 66 : 54
     }
+
+    for (const g of this.bodyGeometryControls(body)) {
+      this.ui.slider(
+        { x, y, w, h: 48 },
+        {
+          id: `body-geo-${g.key}`,
+          label: g.label,
+          value: g.value,
+          min: g.min,
+          max: g.max,
+          step: g.step,
+          unit: ' m',
+          decimals: 2,
+          onScrubStart: () => {
+            this.playing = false
+            this.pushHistory()
+          },
+          onScrubEnd: () => {},
+          onChange: g.onChange,
+        },
+      )
+      y += 54
+    }
+
     if (!isStatic) {
       const v = body.velocity ?? { x: 0, y: 0 }
       const mag = Math.hypot(v.x, v.y)
       const ang = mag > 1e-6 ? (Math.atan2(v.y, v.x) * 180) / Math.PI : 0
-      this.ui.slider({ x, y, w, h: 48 }, {
-        id: 'body-v0',
-        label: '初速度 v₀',
-        value: mag,
-        min: 0,
-        max: 15,
-        step: 0.1,
-        unit: ' m/s',
-        decimals: 2,
-        onScrubStart: () => this.pushHistory(),
-        onChange: (m) => this.setBodyVelocity(body.id, m, ang),
-      })
-      y += 56
+      this.ui.slider(
+        { x, y, w, h: 48 },
+        {
+          id: 'body-v0',
+          label: '初速度 v₀',
+          value: mag,
+          min: 0,
+          max: 15,
+          step: 0.1,
+          unit: ' m/s',
+          decimals: 2,
+          onScrubStart: () => this.pushHistory(),
+          onScrubEnd: () => {},
+          onChange: (m) => this.setBodyVelocity(body.id, m, ang),
+        },
+      )
+      y += 54
     }
-    // 角色 + 更多
+
+    // 机制：贴在这个物体身上的约束（传送带速度 / 马达转速 / 电路电阻 / 导轨行程）
+    if (this.bodyMechanisms(body).length) {
+      this.ui.divider(x, y + 4, x + w, y + 4)
+      y += 14
+      this.ui.text('机制', x, y + 8, { size: 9, weight: 700, color: THEME.inkFaint, tracking: 0.4 })
+      y += 20
+      y = this.renderBodyMechanisms(body, x, w, y)
+      y += 4
+    }
+
+    // 角色 + 删除
     const w2 = (w - 6) / 2
     const role = body.role ?? (body.kind === 'static' ? 'terrain' : 'object')
     this.ui.pillButton({ x, y, w: w2, h: 28 }, role === 'terrain' ? '地形（固定）' : role === 'track' ? '轨道' : '物体（可动）', {
@@ -2395,36 +2396,144 @@ if (id) this.ensureBodyVisible(id)
     return y
   }
 
-  private renderConstraintParams(x: number, y0: number, w: number, con: Constraint): number {
+  /**
+   * 贴在这个物体身上的约束（传送带 / 马达 / 电路 / 销钉 / 导轨）。
+   *
+   * 为什么要单独列：这些约束在画布上没有「一条线」可以点，`pickConstraintAt`
+   * 永远选不中它们——于是传送带的速度、马达的转速、电路的电阻全都改不了。
+   * 挂在物体面板上才符合人的想法：「我要改这个传送带」→ 点传送带 → 改速度。
+   */
+  private bodyMechanisms(body: Body): Constraint[] {
+    return this.doc.constraints.filter((c) => isBodyBound(c) && constraintBodyIds(c).includes(body.id))
+  }
+
+  /** 「机制」区：一个约束一个小标题 + 它的属性滑杆 */
+  private renderBodyMechanisms(body: Body, x: number, w: number, y0: number): number {
+    const list = this.bodyMechanisms(body)
+    if (!list.length) return y0
     let y = y0
-    if (con.type === 'rope' || con.type === 'rod') {
-      this.ui.slider({ x, y, w, h: 48 }, {
-        id: 'con-len',
-        label: '长度 L',
-        value: con.length,
-        min: 0.2,
-        max: 6,
-        step: 0.05,
-        unit: ' m',
-        decimals: 2,
-        onScrubStart: () => this.pushHistory(),
-        onChange: (v) => this.setConstraintValue(con.id, 'length', v),
+    for (const c of list) {
+      const title = constraintTitle(c)
+      this.ui.text(title.name, x, y + 12, { size: 10.5, weight: 700 })
+      this.ui.iconButton({ x: x + w - 26, y: y - 2, w: 26, h: 26 }, 'trash', {
+        onClick: () => {
+          this.pushHistory()
+          this.doc = { ...this.doc, constraints: this.doc.constraints.filter((x) => x.id !== c.id) }
+          this.rebuild()
+          this.toast(`已删除${title.name}`)
+        },
       })
+      y += 24
+      for (const f of constraintFields(c)) {
+        const v = f.read(c)
+        if (v === null) continue
+        this.ui.slider(
+          { x, y, w, h: 40 },
+          {
+            id: `mech-${c.id}-${f.key}`,
+            label: f.label,
+            value: v,
+            min: f.min,
+            max: f.max,
+            step: f.step,
+            decimals: f.decimals,
+            unit: f.unit,
+            onScrubStart: () => {
+              this.playing = false
+              this.pushHistory()
+            },
+            onScrubEnd: () => {},
+            onChange: (next) => this.setConstraintField(c.id, f, next),
+          },
+        )
+        y += 54
+      }
+    }
+    return y
+  }
+
+  /**
+   * 这个物体能改哪几个尺寸。
+   *
+   * 预设体（loop / board / platform）的几何由 `params` 决定，滑杆必须写 params——
+   * 否则改完一 layout 就被参数重算盖掉。这条规则集中在这里，不再散在 UI 里。
+   */
+  private bodyGeometryControls(body: Body): Array<{
+    key: string
+    label: string
+    value: number
+    min: number
+    max: number
+    step: number
+    onChange: (v: number) => void
+  }> {
+    // 参数绑定的预设体优先：几何的真源是 params，不是 shape
+    if (body.id === 'loop' && this.doc.params.R !== undefined) {
+      return [{ key: 'loopR', label: '轨道半径', value: this.doc.params.R, min: 0.3, max: 0.7, step: 0.01, onChange: (v) => this.setLoopRadius(v) }]
+    }
+    if (body.id === 'board' && this.doc.params.l !== undefined) {
+      return [{ key: 'boardL', label: '板长', value: this.doc.params.l, min: 0.4, max: 2, step: 0.05, onChange: (v) => this.setBoardParam('l', v) }]
+    }
+    if (body.id === 'platform' && this.doc.params.h !== undefined) {
+      return [{ key: 'platformH', label: '平台高度', value: this.doc.params.h, min: 0.2, max: 3, step: 0.05, onChange: (v) => this.setBoardParam('h', v) }]
+    }
+    const sh = body.shape
+    if (sh.type === 'circle') {
+      return [{ key: 'r', label: '半径', value: sh.r, min: 0.05, max: 3, step: 0.01, onChange: (v) => this.setBodyRadius(body.id, v) }]
+    }
+    if (sh.type === 'arc') {
+      return [
+        { key: 'r', label: '半径', value: sh.r, min: 0.2, max: 3, step: 0.01, onChange: (v) => this.setBodyRadius(body.id, v) },
+        { key: 'thick', label: '厚度', value: sh.thick, min: 0.02, max: 0.4, step: 0.01, onChange: (v) => this.setBodyThick(body.id, v) },
+      ]
+    }
+    if (sh.type === 'rect') {
+      return [
+        { key: 'w', label: '宽度', value: sh.w, min: 0.05, max: 6, step: 0.01, onChange: (v) => this.setBodySize(body.id, 'w', v) },
+        { key: 'h', label: '高度', value: sh.h, min: 0.02, max: 6, step: 0.01, onChange: (v) => this.setBodySize(body.id, 'h', v) },
+      ]
+    }
+    if (sh.type === 'polyline' || sh.type === 'polygon') {
+      const out = [{ key: 'length', label: '长度', value: shapeLength(sh), min: 0.3, max: 8, step: 0.05, onChange: (v: number) => this.setBodyLength(body.id, v) }]
+      if (sh.type === 'polyline') {
+        out.push({ key: 'thick', label: '厚度', value: sh.thick, min: 0.02, max: 0.4, step: 0.01, onChange: (v: number) => this.setBodyThick(body.id, v) })
+      }
+      return out
+    }
+    return []
+  }
+
+  private renderConstraintParams(x: number, y0: number, w: number, con: Constraint): number {    let y = y0
+    // 和底部检查器共用同一张表——以前这里和 renderConstraintSheet 各写一份 if/else，
+    // 结果一边加了弹簧阻尼、另一边没加。
+    for (const f of constraintFields(con)) {
+      const v = f.read(con)
+      if (v === null) continue
+      this.ui.slider(
+        { x, y, w, h: 48 },
+        {
+          id: `con-${f.key}`,
+          label: f.label,
+          value: v,
+          min: f.min,
+          max: f.max,
+          step: f.step,
+          decimals: f.decimals,
+          unit: f.unit,
+          onScrubStart: () => {
+            this.playing = false
+            this.pushHistory()
+          },
+          onScrubEnd: () => {},
+          onChange: (next) => this.setConstraintField(con.id, f, next),
+        },
+      )
       y += 56
-    } else if (con.type === 'spring') {
-      this.ui.slider({ x, y, w, h: 48 }, {
-        id: 'con-k',
-        label: '劲度系数 k',
-        value: con.k,
-        min: 5,
-        max: 200,
-        step: 5,
-        unit: ' N/m',
-        decimals: 0,
-        onScrubStart: () => this.pushHistory(),
-        onChange: (v) => this.setConstraintValue(con.id, 'k', v),
-      })
-      y += 56
+    }
+    const title = constraintTitle(con)
+    if (title.hint) {
+      this.ui.text(title.hint, x, y + 2, { size: 9.5, color: THEME.inkSoft, maxWidth: w })
+      y += 20
     }
     this.ui.pillButton({ x, y, w, h: 28 }, '删除这个约束', {
       size: 9.5,
@@ -2849,49 +2958,33 @@ if (id) this.ensureBodyVisible(id)
     })
     y += Math.ceil(fields.length / 2) * 54
 
-
-    const geometry =
-      body.shape.type === 'circle' || body.shape.type === 'arc'
-        ? { kind: 'radius' as const, value: body.shape.r }
-        : body.shape.type === 'polyline' || body.shape.type === 'polygon'
-          ? { kind: 'length' as const, value: shapeLength(body.shape) }
-          : body.id === 'loop' && this.doc.params.R !== undefined
-            ? { kind: 'loop' as const, value: this.doc.params.R ?? 0.6 }
-            : body.id === 'board' && this.doc.params.l !== undefined
-              ? { kind: 'boardL' as const, value: this.doc.params.l ?? 1 }
-              : body.id === 'platform' && this.doc.params.h !== undefined
-                ? { kind: 'platformH' as const, value: this.doc.params.h ?? 0.8 }
-                : null
-    if (geometry) {
-      const isRadius = geometry.kind === 'radius'
-      const isLength = geometry.kind === 'length'
-      const isBoardL = geometry.kind === 'boardL'
-      const isPlatformH = geometry.kind === 'platformH'
+    // ---- 尺寸：每种形状能改哪几个数，由 bodyGeometryControls 决定 ----
+    // 原来是「一个滑杆 + 嵌套三元」，只覆盖 circle/arc/polyline/polygon——
+    // 方块（rect）根本没法改大小，只能拖手柄。
+    const geo = this.bodyGeometryControls(body)
+    for (const g of geo) {
       this.ui.slider(
         { x: r.x + pad, y, w: r.w - pad * 2, h: 40 },
         {
-          id: 'body-geometry',
-          label: isRadius ? '半径' : isLength ? '长度' : isBoardL ? '板长' : isPlatformH ? '平台高度' : '轨道半径',
-          value: geometry.value,
-          min: isRadius ? 0.05 : isLength ? 0.3 : isBoardL ? 0.4 : isPlatformH ? 0.2 : 0.3,
-          max: isRadius ? 3 : isLength ? 8 : isBoardL ? 2 : isPlatformH ? 3 : 0.7,
-          step: isLength || isBoardL || isPlatformH ? 0.05 : 0.01,
+          id: `body-geo-${g.key}`,
+          label: g.label,
+          value: g.value,
+          min: g.min,
+          max: g.max,
+          step: g.step,
           decimals: 2,
+          unit: ' m',
           onScrubStart: () => {
             this.playing = false
             this.pushHistory()
           },
           onScrubEnd: () => {},
-          onChange: (v) => {
-            if (isRadius) this.setBodyRadius(body.id, v)
-            else if (isLength) this.setBodyLength(body.id, v)
-            else if (isBoardL) this.setBoardParam('l', v)
-            else if (isPlatformH) this.setBoardParam('h', v)
-            else this.setLoopRadius(v)
-          },
+          onChange: g.onChange,
         },
       )
       y += 54
+    }
+    if (geo.length) {
       this.ui.text('几何为相对模型尺寸，不必等于真实米数', r.x + pad, y, {
         size: 8.5,
         color: THEME.inkFaint,
@@ -3087,9 +3180,9 @@ if (id) this.ensureBodyVisible(id)
       return
     }
     const pad = 16
-    const label = c.type === 'rope' ? '绳' : c.type === 'rod' ? '杆' : c.type === 'spring' ? '弹簧' : '铰链'
-    this.ui.text(label, r.x + pad, r.y + 24, { size: 13, weight: 700 })
-    this.ui.text(c.type === 'track' ? '轨道约束' : '连接约束', r.x + pad + 46, r.y + 24, { size: 10, color: THEME.inkSoft })
+    const title = constraintTitle(c)
+    this.ui.text(title.name, r.x + pad, r.y + 24, { size: 13, weight: 700 })
+    this.ui.text('约束', r.x + pad + 58, r.y + 24, { size: 10, color: THEME.inkSoft })
     this.ui.iconButton({ x: r.x + r.w - 80, y: r.y + 6, w: 36, h: 32 }, 'trash', {
       onClick: () => this.deleteSelected(),
     })
@@ -3098,60 +3191,46 @@ if (id) this.ensureBodyVisible(id)
         this.selectedConstraintId = null
       },
     })
-    if (c.type === 'rope' || c.type === 'rod') {
+
+    // 参数完全由约束属性表决定：加一种约束只要在表里加一行，这里不用动。
+    // 原来是 if/else 手写，只认绳/杆/弹簧，其余全落到 else 显示成「铰链」。
+    let y = r.y + 64
+    const fields = constraintFields(c)
+    for (const f of fields) {
+      const v = f.read(c)
+      if (v === null) continue
       this.ui.slider(
-        { x: r.x + pad, y: r.y + 64, w: r.w - pad * 2, h: 40 },
+        { x: r.x + pad, y, w: r.w - pad * 2, h: 40 },
         {
-          id: 'con-length',
-          label: '长度',
-          value: c.length,
-          min: 0.1,
-          max: 6,
-          step: 0.01,
-          decimals: 2,
-          unit: ' m',
-          onScrubStart: () => this.pushHistory(),
+          id: `con-${f.key}`,
+          label: f.label,
+          value: v,
+          min: f.min,
+          max: f.max,
+          step: f.step,
+          decimals: f.decimals,
+          unit: f.unit,
+          onScrubStart: () => {
+            this.playing = false
+            this.pushHistory()
+          },
           onScrubEnd: () => {},
-          onChange: (v) => this.setConstraintValue(c.id, 'length', v),
+          onChange: (next) => this.setConstraintField(c.id, f, next),
         },
       )
-      this.ui.text('绳只能拉不能推；杆是刚性连接', r.x + pad, r.y + 126, { size: 10, color: THEME.inkSoft })
-    } else if (c.type === 'spring') {
-      this.ui.slider(
-        { x: r.x + pad, y: r.y + 64, w: r.w - pad * 2, h: 40 },
-        {
-          id: 'con-k',
-          label: '劲度系数 k',
-          value: c.k,
-          min: 1,
-          max: 120,
-          step: 1,
-          decimals: 0,
-          unit: ' N/m',
-          onScrubStart: () => this.pushHistory(),
-          onScrubEnd: () => {},
-          onChange: (v) => this.setConstraintValue(c.id, 'k', v),
-        },
-      )
-      this.ui.slider(
-        { x: r.x + pad, y: r.y + 116, w: r.w - pad * 2, h: 40 },
-        {
-          id: 'con-l0',
-          label: '原长 l₀',
-          value: c.l0,
-          min: 0.1,
-          max: 5,
-          step: 0.01,
-          decimals: 2,
-          unit: ' m',
-          onScrubStart: () => this.pushHistory(),
-          onScrubEnd: () => {},
-          onChange: (v) => this.setConstraintValue(c.id, 'l0', v),
-        },
-      )
-    } else {
-      this.ui.text('铰链只固定连接点，不限制转动', r.x + pad, r.y + 70, { size: 10, color: THEME.inkSoft })
+      y += 52
     }
+    this.ui.text(title.hint, r.x + pad, y + 4, { size: 10, color: THEME.inkSoft, maxWidth: r.w - pad * 2 })
+  }
+
+  /** 按属性表写回一个字段；edits 里也记一份，否则 layout 一跑就被冲掉 */
+  private setConstraintField(id: string, f: ConstraintField, v: number): void {
+    this.doc = {
+      ...this.doc,
+      constraints: this.doc.constraints.map((c) => (c.id === id ? f.write(c, v) : c)),
+    }
+    recordConstraintEdit(this.doc, id, { [f.key]: v } as Parameters<typeof recordConstraintEdit>[2])
+    this.rebuild()
   }
 
   private renderWorldSheet(r: Rect): void {
@@ -3388,17 +3467,6 @@ const focus = this.focusBody(this.doc)
     this.setBodyForces(id, forces)
   }
 
-  private setAppliedForce(id: string, x: number, y: number): void {
-    const mag = Math.hypot(x, y)
-    this.doc = {
-      ...this.doc,
-      bodies: this.doc.bodies.map((b) =>
-        b.id === id ? { ...b, appliedForce: mag < 1e-6 ? undefined : { x, y } } : b,
-      ),
-    }
-    this.rebuild()
-  }
-
   private setBodyRadius(id: string, radius: number): void {
     const tracks = this.doc.constraints.filter((c) => c.type === 'track' && c.centerBodyId === id)
     this.doc = {
@@ -3455,14 +3523,6 @@ const focus = this.focusBody(this.doc)
     this.rebuild()
   }
 
-  private setGasTemperature(id: string, temperature: number): void {
-    this.doc = {
-      ...this.doc,
-      gases: this.doc.gases.map((g) => (g.id === id ? { ...g, temperature } : g)),
-    }
-    this.rebuild()
-  }
-
   private setBodyCharge(id: string, charge: number): void {
     this.doc = {
       ...this.doc,
@@ -3475,18 +3535,38 @@ const focus = this.focusBody(this.doc)
   private setBodyLength(id: string, length: number): void {
     const body = findBody(this.doc, id)
     if (!body || (body.shape.type !== 'polyline' && body.shape.type !== 'polygon')) return
-    const current = shapeLength(body.shape)
-    if (current < 1e-9) return
-    const f = length / current
+    // 缩放算法放在 core（shapes.ts）：applyEdits 回放编辑时要用同一份，
+    // 两处各写一份的话，改完一重置就弹回去。
+    const points = scalePointsToLength(body.shape, length)
     this.doc = {
       ...this.doc,
       bodies: this.doc.bodies.map((b) =>
-        b.id === id && (b.shape.type === 'polyline' || b.shape.type === 'polygon')
-          ? { ...b, shape: { ...b.shape, points: b.shape.points.map((p) => ({ x: p.x * f, y: p.y * f })) } }
-          : b,
+        b.id === id && (b.shape.type === 'polyline' || b.shape.type === 'polygon') ? { ...b, shape: { ...b.shape, points } } : b,
       ),
     }
     recordBodyEdit(this.doc, id, { length })
+    this.rebuild()
+  }
+
+  /** 矩形宽/高。方块、薄板、导轨、活塞都是 rect——原来只能拖手柄改 */
+  private setBodySize(id: string, key: 'w' | 'h', v: number): void {
+    this.doc = {
+      ...this.doc,
+      bodies: this.doc.bodies.map((b) => (b.id === id && b.shape.type === 'rect' ? { ...b, shape: { ...b.shape, [key]: v } } : b)),
+    }
+    recordBodyEdit(this.doc, id, key === 'w' ? { w: v } : { h: v })
+    this.rebuild()
+  }
+
+  /** 圆弧/折线的线宽（轨道的「厚度」） */
+  private setBodyThick(id: string, v: number): void {
+    this.doc = {
+      ...this.doc,
+      bodies: this.doc.bodies.map((b) =>
+        b.id === id && (b.shape.type === 'arc' || b.shape.type === 'polyline') ? { ...b, shape: { ...b.shape, thick: v } } : b,
+      ),
+    }
+    recordBodyEdit(this.doc, id, { thick: v })
     this.rebuild()
   }
 
@@ -3527,42 +3607,6 @@ const focus = this.focusBody(this.doc)
     this.rebuild()
   }
 
-  private setBodyRole(id: string, role: 'terrain' | 'object' | 'track'): void {
-    const body = findBody(this.doc, id)
-    if (!body) return
-    const cur = body.role ?? (body.kind === 'static' ? 'terrain' : 'object')
-    if (cur === role) return
-    this.pushHistory()
-    let updated = this.classifyBody(body, role)
-    if (role === 'object') {
-      const hit = findSnap(this.doc, updated, updated.transform, { threshold: 0.32 })
-      if (hit) updated = applySnap(updated, hit)
-    }
-    this.doc = {
-      ...this.doc,
-      bodies: this.doc.bodies.map((b) => (b.id === id ? updated : b)),
-    }
-    recordBodyEdit(this.doc, id, { role, kind: updated.kind })
-    if (role === 'track') this.attachTrack(updated)
-    this.selectedId = id
-    this.rebuild()
-  }
-
-  private setConstraintValue(id: string, key: 'length' | 'k' | 'l0', v: number): void {
-    this.doc = {
-      ...this.doc,
-      constraints: this.doc.constraints.map((c) => {
-        if (c.id !== id) return c
-        if (key === 'length' && (c.type === 'rope' || c.type === 'rod')) return { ...c, length: v }
-        if (key === 'k' && c.type === 'spring') return { ...c, k: v }
-        if (key === 'l0' && c.type === 'spring') return { ...c, l0: v }
-        return c
-      }),
-    }
-    recordConstraintEdit(this.doc, id, { [key]: v })
-    this.rebuild()
-  }
-
   private selectConstraint(id: string): void {
     this.selectedConstraintId = id
     this.selectedId = null
@@ -3582,23 +3626,53 @@ const focus = this.focusBody(this.doc)
     return { x: t.x + local.x * c - local.y * sn, y: t.y + local.x * sn + local.y * c }
   }
 
+  /**
+   * 点画布上的约束把它选中。只处理「画得出来一条线」的约束：
+   * 绳/杆/弹簧/铰链（连线）、滑轮（两段绳）、圆轨道（那圈弧）。
+   *
+   * 传送带/马达/电路/销钉/导轨没有可点的线，走物体面板的「机制」区（见 bodyMechanisms）。
+   */
   private pickConstraintAt(x: number, y: number): Constraint | null {
     const state = this.visualState()
     let best: Constraint | null = null
     let bestD = 12
-    for (const c of this.doc.constraints) {
-      if (c.type !== 'rope' && c.type !== 'rod' && c.type !== 'spring' && c.type !== 'hinge') continue
-      const a = this.camera.project(this.constraintAnchorWorld(c.a, state), 0)
-      const b = this.camera.project(this.constraintAnchorWorld(c.b, state), 0)
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const len2 = dx * dx + dy * dy
-      let tt = len2 > 1e-6 ? ((x - a.x) * dx + (y - a.y) * dy) / len2 : 0
-      tt = Math.max(0, Math.min(1, tt))
-      const d = Math.hypot(x - (a.x + dx * tt), y - (a.y + dy * tt))
+    const consider = (c: Constraint, d: number) => {
       if (d < bestD) {
         bestD = d
         best = c
+      }
+    }
+    const segDist = (a: Vec2, b: Vec2) => {
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len2 = dx * dx + dy * dy
+      let t = len2 > 1e-6 ? ((x - a.x) * dx + (y - a.y) * dy) / len2 : 0
+      t = Math.max(0, Math.min(1, t))
+      return Math.hypot(x - (a.x + dx * t), y - (a.y + dy * t))
+    }
+
+    for (const c of this.doc.constraints) {
+      if (c.type === 'rope' || c.type === 'rod' || c.type === 'spring' || c.type === 'hinge') {
+        const a = this.camera.project(this.constraintAnchorWorld(c.a, state), 0)
+        const b = this.camera.project(this.constraintAnchorWorld(c.b, state), 0)
+        consider(c, segDist(a, b))
+      } else if (c.type === 'pulley') {
+        // 滑轮画成两段绳（groundA→A、groundB→B），点哪段都算选中它
+        const A = this.camera.project(this.constraintAnchorWorld(c.a, state), 0)
+        const B = this.camera.project(this.constraintAnchorWorld(c.b, state), 0)
+        const ga = this.camera.project(c.groundA, 0)
+        const gb = this.camera.project(c.groundB, 0)
+        consider(c, Math.min(segDist(ga, A), segDist(gb, B)))
+      } else if (c.type === 'track') {
+        // 圆轨道：点到圆心距离与半径之差就是「离线多远」
+        const center = findBody(this.doc, c.centerBodyId)
+        if (!center) continue
+        const st = state?.bodies[c.centerBodyId]
+        const cx = st?.x ?? center.transform.x
+        const cy = st?.y ?? center.transform.y
+        const p = this.camera.project({ x: cx, y: cy }, 0)
+        const rPx = c.radius * this.camera.scale
+        consider(c, Math.abs(Math.hypot(x - p.x, y - p.y) - rPx))
       }
     }
     return best

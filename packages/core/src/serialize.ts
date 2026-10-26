@@ -86,22 +86,6 @@ export function decodeScene(text: string): Scene {
   return normalizeScene(parsed)
 }
 
-export function sceneToShareUrl(scene: Scene, baseUrl: string): string {
-  const url = new URL(baseUrl)
-  url.hash = encodeShare(scene)
-  return url.toString()
-}
-
-export function sceneFromHash(hash: string): Scene | null {
-  const clean = hash.replace(/^#/, '').trim()
-  if (!clean) return null
-  try {
-    return decodeScene(clean)
-  } catch {
-    return null
-  }
-}
-
 /** 补齐缺省字段，兼容早期/手写的 JSON。不做取值范围的强校验（那是 validateScene 的事）。 */
 export function normalizeScene(raw: unknown): Scene {
   if (!raw || typeof raw !== 'object') throw new Error('场景不是对象')

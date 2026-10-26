@@ -1,9 +1,9 @@
-// 文档事实校验：CODEMAP 里的行数必须和代码一致。
+// 文档事实校验：ARCHITECTURE 里的行数必须和代码一致。
 //
 //   node scripts/doc-facts.mjs          只检查（不一致就 exit 1）
-//   node scripts/doc-facts.mjs --write  把事实块重写进 docs/CODEMAP.md
+//   node scripts/doc-facts.mjs --write  把事实块重写进 docs/ARCHITECTURE.md
 //
-// 为什么要有它：CODEMAP 曾经写 app.ts=1798 行，实际 4772——文档漂移比没有文档更坑，
+// 为什么要有它：文件地图曾经写 app.ts=1798 行，实际 4000+——文档漂移比没有文档更坑，
 // 因为它会让人按错误的体积做判断（「这个文件不用拆」）。
 import fs from 'node:fs'
 import path from 'node:path'
@@ -36,6 +36,7 @@ const FILES = [
   'packages/core/src/components.ts',
   'packages/core/src/ports.ts',
   'packages/core/src/body-fields.ts',
+  'packages/core/src/constraint-fields.ts',
   'packages/core/src/validate.ts',
   'packages/core/src/params.ts',
   'packages/core/src/criterion.ts',
@@ -74,7 +75,7 @@ const table = [
   END,
 ].join('\n')
 
-const codemapPath = path.join(root, 'docs/CODEMAP.md')
+const codemapPath = path.join(root, 'docs/ARCHITECTURE.md')
 const codemap = fs.readFileSync(codemapPath, 'utf8')
 const write = process.argv.includes('--write')
 
@@ -83,10 +84,10 @@ if (write) {
     ? codemap.replace(new RegExp(`${START}[\\s\\S]*?${END}`), table)
     : codemap.replace(/\n## /, `\n${table}\n\n## `)
   fs.writeFileSync(codemapPath, next, 'utf8')
-  console.log(`已写入 docs/CODEMAP.md（${facts.length} 个文件）`)
+  console.log(`已写入 docs/ARCHITECTURE.md（${facts.length} 个文件）`)
 } else {
   if (!codemap.includes(START)) {
-    console.error('CODEMAP 里没有事实块，先跑 node scripts/doc-facts.mjs --write')
+    console.error('ARCHITECTURE 里没有事实块，先跑 node scripts/doc-facts.mjs --write')
     process.exit(1)
   }
   const block = codemap.slice(codemap.indexOf(START), codemap.indexOf(END))

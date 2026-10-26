@@ -1008,6 +1008,21 @@ function buildCharges(): Scene {
   return s
 }
 
+/**
+ * 气缸参数 → 气体。
+ *
+ * 这个 layout 补的是一个**真 bug**：`buildGas` 声明了 `params = { T, n, P0 }`，
+ * 但没人读它——温度硬编码在 `gases[0].temperature = 300` 里。
+ * 于是左面板三个滑杆拖了完全没反应，看起来像功能，其实是死控件。
+ */
+function layoutGas(s: Scene): void {
+  const g = s.gases[0]
+  if (!g) return
+  g.temperature = s.params.T ?? 300
+  g.n = s.params.n ?? 1
+  g.ambientPressure = s.params.P0 ?? 100
+}
+
 function buildOrbit(): Scene {
   const s = emptyScene('万有引力：卫星轨迹')
   s.meta.note =
@@ -1190,15 +1205,6 @@ function buildPulley(): Scene {
 // 通用组合器：换角度/长度/半径/摩擦就是另一道多过程题，不写死题目
 // ---------------------------------------------------------------------------
 
-export type RampChainSpec = {
-  slopeDeg?: number
-  slopeLen?: number
-  flatLen?: number
-  arcR?: number
-  arcDeg?: number
-  flatMu?: number
-  blockSize?: number
-}
 
 function buildRampChain(): Scene {
   const s = emptyScene('多过程：斜面 → 水平 → 圆弧')
@@ -1555,6 +1561,7 @@ export const PRESETS: ScenePreset[] = [
     subtitle: '竖直气缸 + 活塞：P = nRT/V，升温看活塞上移',
     chips: ['理想气体', '热学', '活塞'],
     build: buildGas,
+    layout: layoutGas,
   },
   {
     id: 'pulley',

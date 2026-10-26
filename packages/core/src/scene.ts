@@ -4,7 +4,7 @@
  * 所有层（渲染、物理、判据、UI）都从它派生；物理层不写回。撤销/重做、分享、
  * A/B 对比都只是「换一份 JSON」。
  *
- * 与架构文档 §3 的差异（均为向后兼容的扩展，已在 docs/DECISIONS.md 记录）：
+ * 与架构文档 §3 的差异（均为向后兼容的扩展，已在 docs/ARCHITECTURE.md §3 记录）：
  * - 增加 `shape.type === 'compound'`：一个刚体可由多个形状组成（半圆槽 = 弧 + 底座）。
  * - 增加 `params`：预设场景的标量参数，UI 滑杆绑定它，`layout()` 在每次重置时把它
  *   展开成几何。这样 θ 这种「改一个数就换一套几何」的开关也能用 JSON Pointer 表达。
@@ -13,6 +13,7 @@
  * - 增加 `guides`：教学辅助线（等高线、目标线），不参与物理。
  */
 import type { Vec2 } from './math'
+import { scalePointsToLength } from './shapes'
 
 export type Plane = 'vertical' | 'horizontal'
 
@@ -39,6 +40,11 @@ export type BodyEdit = {
   /** 折线/多边形地形的总长度（模型相对值）；按当前方向等比缩放 */
   length?: number
   radius?: number
+  /** 矩形宽高（「方块」「薄板」「导轨」的尺寸都靠它） */
+  w?: number
+  h?: number
+  /** 圆弧/折线的线宽（轨道、半圆槽的「厚度」） */
+  thick?: number
   style?: 'solid' | 'thin'
   y?: number
   angle?: number
@@ -55,7 +61,25 @@ export type BodyEdit = {
   omega?: number
 }
 
-export type ConstraintEdit = { length?: number; k?: number; l0?: number; damping?: number; radius?: number }
+/**
+ * 约束的编辑覆盖层。**必须和 constraint-fields 里的 key 一一对应**：
+ * 表里能改什么，这里就得能存什么、applyEdits 就得能盖回去。
+ * 少一项的症状是「拖了滑杆、一重置就弹回去」——参数被 layout 冲掉了。
+ */
+export type ConstraintEdit = {
+  length?: number
+  k?: number
+  l0?: number
+  damping?: number
+  radius?: number
+  speed?: number
+  omega?: number
+  resistance?: number
+  emf0?: number
+  lower?: number
+  upper?: number
+  ratio?: number
+}
 
 export type Body = {
   id: string
@@ -428,10 +452,6 @@ export function findRegion(scene: Scene, id: string | undefined): Region | undef
   return id ? scene.regions.find((r) => r.id === id) : undefined
 }
 
-export function findCriterion(scene: Scene, id: string): Criterion | undefined {
-  return scene.criteria.find((c) => c.id === id)
-}
-
 /** 接触对优先；没有显式接触对时退回 Box2D 的 sqrt 混合。 */
 export function resolveFriction(scene: Scene, matA: string, matB: string): number {
   for (const p of scene.contactPairs) {
@@ -451,10 +471,6 @@ export function resolveRestitution(scene: Scene, matA: string, matB: string): nu
   const a = findMaterial(scene, matA)
   const b = findMaterial(scene, matB)
   return Math.max(a?.restitution ?? 0.1, b?.restitution ?? 0.1)
-}
-
-export function materialColor(scene: Scene, matId: string): string {
-  return findMaterial(scene, matId)?.color ?? '#8d97a6'
 }
 
 // ---------------------------------------------------------------------------
@@ -493,23 +509,13 @@ export function applyEdits(scene: Scene): Scene {
       if (e.kind !== undefined) b.kind = e.kind
       if (e.role !== undefined) b.role = e.role
       if (e.radius !== undefined && (b.shape.type === 'arc' || b.shape.type === 'circle')) b.shape.r = e.radius
-  if (e.length !== undefined && (b.shape.type === 'polyline' || b.shape.type === 'polygon')) {
-    const pts = b.shape.points
-    let current = 0
-    if (b.shape.type === 'polyline') {
-      for (let i = 1; i < pts.length; i++) current += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y)
-    } else {
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-      for (const p of pts) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y) }
-      current = Math.max(maxX - minX, maxY - minY)
-    }
-    if (current > 1e-9) {
-      const f = e.length / current
-      b.shape.points = pts.map((p) => ({ x: p.x * f, y: p.y * f }))
-    }
-  }
+      if (e.w !== undefined && b.shape.type === 'rect') b.shape.w = e.w
+      if (e.h !== undefined && b.shape.type === 'rect') b.shape.h = e.h
+      if (e.thick !== undefined && (b.shape.type === 'arc' || b.shape.type === 'polyline')) b.shape.thick = e.thick
+      if (e.length !== undefined && (b.shape.type === 'polyline' || b.shape.type === 'polygon')) {
+        b.shape.points = scalePointsToLength(b.shape, e.length)
+      }
       if (e.style !== undefined) b.appearance.style = e.style
-      if (e.charge !== undefined) b.charge = e.charge
       if (e.forces !== undefined) b.forces = e.forces.map((f) => ({ ...f }))
     }
   }
@@ -518,10 +524,18 @@ export function applyEdits(scene: Scene): Scene {
       const e = edits.constraints[c.id]
       if (!e) continue
       if (e.length !== undefined && (c.type === 'rope' || c.type === 'rod')) c.length = e.length
+      if (e.length !== undefined && c.type === 'circuit') c.length = e.length
       if (e.radius !== undefined && c.type === 'track') c.radius = e.radius
       if (e.k !== undefined && c.type === 'spring') c.k = e.k
       if (e.l0 !== undefined && c.type === 'spring') c.l0 = e.l0
       if (e.damping !== undefined && c.type === 'spring') c.damping = e.damping
+      if (e.speed !== undefined && c.type === 'belt') c.speed = e.speed
+      if (e.omega !== undefined && c.type === 'motor') c.omega = e.omega
+      if (e.resistance !== undefined && c.type === 'circuit') c.resistance = e.resistance
+      if (e.emf0 !== undefined && c.type === 'circuit') c.emf0 = e.emf0
+      if (e.lower !== undefined && c.type === 'prismatic') c.lower = e.lower
+      if (e.upper !== undefined && c.type === 'prismatic') c.upper = e.upper
+      if (e.ratio !== undefined && c.type === 'pulley') c.ratio = e.ratio
     }
   }
   return scene

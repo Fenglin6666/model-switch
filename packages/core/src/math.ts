@@ -11,16 +11,7 @@ export const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y
 export const cross = (a: Vec2, b: Vec2): number => a.x * b.y - a.y * b.x
 export const len = (a: Vec2): number => Math.hypot(a.x, a.y)
 export const len2 = (a: Vec2): number => a.x * a.x + a.y * a.y
-export const norm = (a: Vec2): Vec2 => {
-  const l = len(a)
-  return l > 1e-12 ? { x: a.x / l, y: a.y / l } : { x: 0, y: 0 }
-}
 export const neg = (a: Vec2): Vec2 => ({ x: -a.x, y: -a.y })
-export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t
-export const lerpV = (a: Vec2, b: Vec2, t: number): Vec2 => ({
-  x: lerp(a.x, b.x, t),
-  y: lerp(a.y, b.y, t),
-})
 
 export function rot(a: Vec2, angle: number): Vec2 {
   const c = Math.cos(angle)
@@ -68,38 +59,10 @@ export function polygonArea(poly: Vec2[]): number {
   return s / 2
 }
 
-export function polygonCentroid(poly: Vec2[]): Vec2 {
-  let cx = 0
-  let cy = 0
-  let a = 0
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const f = poly[j]!.x * poly[i]!.y - poly[i]!.x * poly[j]!.y
-    a += f
-    cx += (poly[j]!.x + poly[i]!.x) * f
-    cy += (poly[j]!.y + poly[i]!.y) * f
-  }
-  if (Math.abs(a) < 1e-12) {
-    // 退化：取顶点平均
-    let sx = 0
-    let sy = 0
-    for (const q of poly) {
-      sx += q.x
-      sy += q.y
-    }
-    return { x: sx / poly.length, y: sy / poly.length }
-  }
-  const k = 1 / (3 * a)
-  return { x: cx * k, y: cy * k }
-}
-
 export function polylineLength(pts: Vec2[]): number {
   let s = 0
   for (let i = 1; i < pts.length; i++) s += distance(pts[i - 1]!, pts[i]!)
   return s
-}
-
-export function almostEqual(a: number, b: number, eps = 1e-9): boolean {
-  return Math.abs(a - b) <= eps
 }
 
 /** 三次/二次贝塞尔采样，t∈[0,1] */
@@ -123,19 +86,6 @@ export function bezierPoint(ctrl: Vec2[], t: number): Vec2 {
     }
   }
   return ctrl[0] ?? { x: 0, y: 0 }
-}
-
-/** 沿闭合/开放折线等距取点，用于画箭头、刻度 */
-export function pathPointAt(pts: Vec2[], s: number): Vec2 {
-  let acc = 0
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1]!
-    const b = pts[i]!
-    const l = distance(a, b)
-    if (acc + l >= s) return lerpV(a, b, (s - acc) / Math.max(l, 1e-9))
-    acc += l
-  }
-  return pts[pts.length - 1] ?? { x: 0, y: 0 }
 }
 
 

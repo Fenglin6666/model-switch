@@ -7,11 +7,6 @@ export type Rect = { x: number; y: number; w: number; h: number }
 export const inRect = (r: Rect, x: number, y: number): boolean =>
   x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
 
-export const rectCenter = (r: Rect): { x: number; y: number } => ({
-  x: r.x + r.w / 2,
-  y: r.y + r.h / 2,
-})
-
 export type HitRegion = {
   id: string
   rect: Rect

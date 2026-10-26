@@ -125,21 +125,6 @@ export function renderGeometries(shape: Shape, precision: Precision): RenderGeom
   }
 }
 
-/** 用于选中/命中测试的轮廓（局部坐标） */
-export function hitOutline(shape: Shape, precision: Precision): { points: Vec2[]; thick: number } {
-  const all = renderGeometries(shape, precision)
-  let thick = 0
-  const points: Vec2[] = []
-  for (const g of all) {
-    if (g.kind === 'fill') points.push(...g.outlines.flat())
-    else {
-      points.push(...g.points)
-      thick = Math.max(thick, g.thick)
-    }
-  }
-  return { points, thick }
-}
-
 export function pointInShape(shape: Shape, p: Vec2, precision: Precision = 'teach'): boolean {
   switch (shape.type) {
     case 'circle':
@@ -229,12 +214,6 @@ export function shapeAABB(shape: Shape, precision: Precision = 'teach'): { min: 
   }
   if (!Number.isFinite(minX)) return { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } }
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } }
-}
-
-/** 世界坐标命中测试 */
-export function pointInBody(shape: Shape, transform: { x: number; y: number; angle: number }, world: Vec2, precision: Precision = 'teach'): boolean {
-  const local = rot({ x: world.x - transform.x, y: world.y - transform.y }, -transform.angle)
-  return pointInShape(shape, local, precision)
 }
 
 export function bodyAABB(shape: Shape, transform: { x: number; y: number; angle: number }, precision: Precision = 'teach') {
@@ -379,18 +358,38 @@ export function toPhysicsFixtures(
   }
 }
 
-/** 采样后的世界坐标折线，用于轨迹/矢量绘制 */
-export function shapePolylineWorld(shape: Shape, transform: { x: number; y: number; angle: number }, precision: Precision = 'teach'): Vec2[] {
-  const g = renderGeometries(shape, precision)[0]
-  if (!g) return []
-  const pts = g.kind === 'fill' ? g.outlines[0] ?? [] : g.points
-  return pts.map((p) => {
-    const r = rot(p, transform.angle)
-    return { x: r.x + transform.x, y: r.y + transform.y }
-  })
+/**
+ * 「这个形状有多长」——折线量总弧长，多边形量外接框的长边。
+ *
+ * 为什么统一放这里：UI 的几何滑杆要读它，applyEdits 回放编辑时也要用它算缩放比。
+ * 原来两边各写了一份（App 里一份、scene.ts 里内联一份），改一处忘一处就会
+ * 「拖了滑杆，重置后又变回去」。
+ */
+export function shapeLength(shape: Extract<Shape, { type: 'polyline' | 'polygon' }>): number {
+  if (shape.type === 'polyline') {
+    let total = 0
+    for (let i = 1; i < shape.points.length; i++) {
+      total += Math.hypot(shape.points[i]!.x - shape.points[i - 1]!.x, shape.points[i]!.y - shape.points[i - 1]!.y)
+    }
+    return total
+  }
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const p of shape.points) {
+    minX = Math.min(minX, p.x)
+    maxX = Math.max(maxX, p.x)
+    minY = Math.min(minY, p.y)
+    maxY = Math.max(maxY, p.y)
+  }
+  return Math.max(maxX - minX, maxY - minY)
 }
 
-/** 夹取到桩形（用于把生成物体放进世界边界） */
-export function clampToRange(v: number, lo: number, hi: number): number {
-  return clamp(v, lo, hi)
+/** 等比缩放到目标长度；退化形状（长度≈0）原样返回，避免除零 */
+export function scalePointsToLength(shape: Extract<Shape, { type: 'polyline' | 'polygon' }>, target: number): Vec2[] {
+  const current = shapeLength(shape)
+  if (current < 1e-9) return shape.points
+  const k = target / current
+  return shape.points.map((p) => ({ x: p.x * k, y: p.y * k }))
 }

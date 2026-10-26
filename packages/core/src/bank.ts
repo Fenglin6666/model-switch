@@ -204,10 +204,6 @@ export function bankCategoryName(id: string): string {
   return BANK_CATEGORIES.find((c) => c.id === id)?.name ?? id
 }
 
-export function bankProblemById(id: string): BankProblem | undefined {
-  return BANK_PROBLEMS.find((p) => p.id === id)
-}
-
 /** 题库里「能建」的比例，用来在页面上给一句诚实的说明 */
 export function bankStats(list: BankProblem[] = BANK_PROBLEMS): { total: number; buildable: number } {
   return {

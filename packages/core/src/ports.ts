@@ -132,10 +132,6 @@ export function resolvePortRef(scene: Scene, ref: PortRef): { bodyId: string | n
   return { bodyId: ref.bodyId, local: ref.local, point: { x: body.transform.x + r.x, y: body.transform.y + r.y } }
 }
 
-export function describePort(p: Port): string {
-  return p.label ?? p.id
-}
-
 /**
  * 只取「局部坐标」，不转世界、不建关节。
  * 渲染层和监视器各自有自己的 transform 来源（仿真状态 vs 场景初始），所以它们要的是这一层。

@@ -198,3 +198,49 @@ describe('约束：hinge（铰链）', () => {
     expect(maxAngle).toBeGreaterThan(1.5) // 门确实转下来了（不是被焊死）
   })
 })
+
+describe('组合：多个基元挂在同一个物体上', () => {
+  it('圆轨道 + 马达：球被约束在圆上，同时被驱动着转', () => {
+    const s = scene({
+      bodies: [
+        box('ring', 1.2, 1.2, { kind: 'static', transform: { x: 0, y: 0, angle: 0 }, material: 'smooth' }),
+        body('ball', { kind: 'rigid', transform: { x: 0.5, y: 0, angle: 0 }, mass: 0.2, fixedRotation: false }),
+      ],
+      constraints: [
+        { id: 't', type: 'track', bodyId: 'ball', centerBodyId: 'ring', radius: 0.5, side: 'inner' },
+        { id: 'm', type: 'motor', bodyId: 'ball', omega: 2 },
+      ],
+    })
+    const sim = new Simulation(s)
+    let maxDev = 0
+    for (let i = 0; i < 240; i++) {
+      sim.step()
+      const st = sim.state.bodies.ball!
+      maxDev = Math.max(maxDev, Math.abs(Math.hypot(st.x, st.y) - 0.5))
+    }
+    const st = sim.state.bodies.ball!
+    // 轨道约束始终生效：全程没离开半径 0.5 的圆
+    expect(maxDev).toBeLessThan(0.03)
+    // 马达也在起作用：球绕圈跑了一段
+    expect(Math.atan2(st.y, st.x)).not.toBeCloseTo(0, 1)
+  })
+
+  it('传送带 + 电场：两个机制同时作用于一个物块', () => {
+    const mk = (E: number) =>
+      scene({
+        world: { ...emptyScene().world, gravity: 9.8, timeStep: 1 / 480, substeps: 2 },
+        bodies: [
+          box('belt', 40, 0.4, { kind: 'static', transform: { x: 0, y: 0, angle: 0 }, material: 'metal' }),
+          box('block', 0.3, 0.3, { kind: 'rigid', transform: { x: 0, y: 0.36, angle: 0 }, material: 'metal', mass: 1, charge: 1 }),
+        ],
+        constraints: [{ id: 'c', type: 'belt', bodyId: 'belt', speed: 1 }],
+        fields: [{ id: 'E', kind: 'uniform', type: 'E', vector: { x: E, y: 0 } }],
+      })
+    // 电场弱（2 N）时，摩擦（μmg≈5.9 N）能把它按在带速上——这正是「传送带共速」的物理
+    const weak = run(mk(2), 480 * 3)
+    expect(weak.state.bodies.block!.vx).toBeCloseTo(1, 1)
+    // 电场强到超过最大静摩擦（8 N > 5.9 N），物块才会被推着超过带速
+    const strong = run(mk(8), 480 * 3)
+    expect(strong.state.bodies.block!.vx).toBeGreaterThan(2)
+  })
+})

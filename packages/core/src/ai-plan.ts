@@ -140,7 +140,7 @@ kind 只能是 slope(斜面) / flat(水平) / arc(圆弧) / upslope(上坡)，�
 
 2. 加约束：{"op":"addConstraint","type":"rope","a":{"body":"ball","port":"top"},"b":{"world":{"x":0,"y":2}},
             "params":{"length":1.2}}
-   type：rope / rod / spring / hinge / pin / motor / belt / circuit
+   type：rope / rod / spring / hinge / pin / motor / belt / circuit / pulley / track / prismatic
    **两端只能引用端口**，不要自己算坐标：每个物体都自带 center/top/bottom/left/right/tl/tr/bl/br。
    自己声明的端口（转轴、挂钩）写在 addBody 的 ports 里：
      "ports":[{"id":"shaft","kind":"axle","at":"center"}]
@@ -148,6 +148,14 @@ kind 只能是 slope(斜面) / flat(水平) / arc(圆弧) / upslope(上坡)，�
      {"op":"addConstraint","type":"motor","bodyId":"wheel","params":{"omega":3}}
      {"op":"addConstraint","type":"belt","bodyId":"belt","params":{"speed":2}}
    rope/rod 不写 length 就按两端当前距离；spring 用 params{k, l0, damping}
+
+   滑轮（绳跨过定滑轮）：bodyId = 滑轮本体（先 addBody 一个固定圆当轮子），a/b = 两端挂的物体。
+   轮心、绳长这些内部坐标**不用你算**，我们按轮心和挂点的当前距离填：
+     {"op":"addConstraint","type":"pulley","bodyId":"wheel","a":{"body":"m1","port":"top"},"b":{"body":"m2","port":"top"},"params":{"ratio":1}}
+   圆轨道（球被约束在圆上）：bodyId = 球，centerBodyId = 圆弧本体；半径默认 = 轨道内半径 − 球半径。
+     {"op":"addConstraint","type":"track","bodyId":"ball","centerBodyId":"arc"}
+   导轨（只能沿一个方向滑）：bodyId = 滑块，centerBodyId = 导轨本体，axis 0=水平 1=竖直。
+     {"op":"addConstraint","type":"prismatic","bodyId":"slider","centerBodyId":"rail","params":{"axis":0,"lower":-2,"upper":2}}
 
    circuit = 导体棒切割磁感线（电磁感应单棒题）。它自己会算动生电动势和安培力，
    **不要另外给棒加一个"安培力"外力**，那会算两遍：
@@ -158,6 +166,10 @@ kind 只能是 slope(斜面) / flat(水平) / arc(圆弧) / upslope(上坡)，�
    双棒、线圈转动、变压器仍然做不了（见规则 6）。
 
 3. 加场：{"op":"addField","type":"E","magnitude":40,"angleDeg":90}
+   有界场（**磁场题最主流的画法**）加一个 region，场只在这块区域里生效：
+     {"op":"addField","type":"B","magnitude":0.8,"region":{"kind":"rect","x":0,"y":0,"w":3,"h":2}}
+     region 也可以 {"kind":"circle","x":0,"y":0,"r":1}
+   没有 region 就是全场。
 
 ## 输出格式
 只输出**一个 JSON 对象**，不要 markdown 代码块，不要任何解释文字。
@@ -369,12 +381,13 @@ export function parsePlan(raw: string): PlanParse {
       }
       if (kind === 'addConstraint') {
         const type = String(r.type ?? '')
-        if (!['rope', 'rod', 'spring', 'hinge', 'pin', 'motor', 'belt', 'circuit'].includes(type)) continue
+        if (!(CONSTRAINT_OPS as readonly string[]).includes(type)) continue
         const op: BuildOp = { op: 'addConstraint', type: type as never }
         if (typeof r.id === 'string') op.id = r.id
         if (r.a && typeof r.a === 'object') op.a = r.a as PortRefLike
         if (r.b && typeof r.b === 'object') op.b = r.b as PortRefLike
         if (typeof r.bodyId === 'string') op.bodyId = r.bodyId
+        if (typeof r.centerBodyId === 'string') op.centerBodyId = r.centerBodyId
         if (typeof r.fieldId === 'string') op.fieldId = r.fieldId
         if (r.params && typeof r.params === 'object') {
           const params: Record<string, number> = {}
@@ -389,7 +402,23 @@ export function parsePlan(raw: string): PlanParse {
       }
       if (kind === 'addField') {
         const type = r.type === 'B' ? 'B' : 'E'
-        ops.push({ op: 'addField', type, magnitude: num(r.magnitude) ?? 0, angleDeg: num(r.angleDeg) })
+        const op: BuildOp = { op: 'addField', type, magnitude: num(r.magnitude) ?? 0, angleDeg: num(r.angleDeg) }
+        const reg = r.region as Record<string, unknown> | undefined
+        if (reg && typeof reg === 'object') {
+          const x = num(reg.x)
+          const y = num(reg.y)
+          if (x !== undefined && y !== undefined) {
+            op.region = {
+              kind: reg.kind === 'circle' ? 'circle' : 'rect',
+              x,
+              y,
+              w: num(reg.w),
+              h: num(reg.h),
+              r: num(reg.r),
+            }
+          }
+        }
+        ops.push(op)
         continue
       }
     }
@@ -487,15 +516,29 @@ export type BuildOp =
   | {
       op: 'addConstraint'
       id?: string
-      type: 'rope' | 'rod' | 'spring' | 'hinge' | 'pin' | 'motor' | 'belt' | 'circuit'
+      type: 'rope' | 'rod' | 'spring' | 'hinge' | 'pin' | 'motor' | 'belt' | 'circuit' | 'pulley' | 'track' | 'prismatic'
       a?: PortRefLike
       b?: PortRefLike
+      /** 单体贴身约束的对象；pulley 里它是滑轮本体 */
       bodyId?: string
+      /** 双体约束的另一端（导轨的载体、圆轨道的圆心） */
+      centerBodyId?: string
       /** circuit 专用：磁场的 id（不写就取场景里第一个匀强 B） */
       fieldId?: string
       params?: Record<string, number>
     }
-  | { op: 'addField'; type: 'E' | 'B'; magnitude: number; angleDeg?: number }
+  | {
+      op: 'addField'
+      type: 'E' | 'B'
+      magnitude: number
+      angleDeg?: number
+      /**
+       * 只在这块区域里生效。**「有界磁场」是磁场题最主流的画法**
+       * （粒子从边界射入、在半圆里转、再射出），没有它 agent 只能给全场，
+       * 学生看到的就是「整张纸都是磁场」。
+       */
+      region?: { kind?: 'rect' | 'circle'; x: number; y: number; w?: number; h?: number; r?: number }
+    }
 
 const BEHAVIOR: Record<BodyBehavior, { kind: Body['kind']; role: Body['role'] }> = {
   fixed: { kind: 'static', role: 'terrain' },
@@ -506,6 +549,21 @@ const BEHAVIOR: Record<BodyBehavior, { kind: Body['kind']; role: Body['role'] }>
 
 const BODY_PALETTE = ['#dd5735', '#3f6fd0', '#2f8f6b', '#a06a2c', '#7c3aed', '#c2410c']
 const TERRAIN_COLOR = '#8b96a8'
+
+/**
+ * agent 能用的约束类型。**必须和 `Constraint` 联合类型一一对应**——
+ * 少一个的症状是：agent 明明说得出「滑轮」，我们却静默丢掉，建出来的模型少一条绳。
+ * tests/build-ops.test.ts 里有一条断言盯着这个集合。
+ */
+const CONSTRAINT_OPS = ['rope', 'rod', 'spring', 'hinge', 'pin', 'motor', 'belt', 'circuit', 'pulley', 'track', 'prismatic'] as const
+
+/**
+ * 编译期断言：Constraint 里加一种新约束而忘了加进 CONSTRAINT_OPS，这里会直接报错。
+ * 比写一条运行时测试可靠——漏的那天就红，不用等人想起来跑测试。
+ */
+type _MissingOp = Exclude<Constraint['type'], (typeof CONSTRAINT_OPS)[number]>
+const _allConstraintsExposed: _MissingOp extends never ? true : never = true
+void _allConstraintsExposed
 
 function shapeFromSpec(spec: ShapeSpec): Shape | null {
   if (!spec || typeof spec !== 'object') return null
@@ -674,14 +732,103 @@ export function sceneFromOps(ops: BuildOp[], title = 'AI 搭的场景'): ParseRe
         continue
       }
 
+      if (op.type === 'pulley') {
+        // 滑轮：bodyId = 滑轮本体（通常是固定轮），a/b = 两端挂的物体。
+        // groundA/groundB 取轮心、lengthA/lengthB 取「轮心到挂点」的当前距离——
+        // 这些是内部坐标，agent 算不出来，也不该让它算。
+        const wheel = op.bodyId ? scene.bodies.find((b) => b.id === op.bodyId) : undefined
+        if (!wheel) {
+          warnings.push(`滑轮 ${id} 找不到滑轮本体（bodyId），跳过`)
+          continue
+        }
+        const A = op.a ? resolvePortRef(scene, anchorOf(op.a) as never) : null
+        const B = op.b ? resolvePortRef(scene, anchorOf(op.b) as never) : null
+        if (!A || !B) {
+          warnings.push(`滑轮 ${id} 的两端接点解析不到，跳过`)
+          continue
+        }
+        const center = { x: wheel.transform.x, y: wheel.transform.y }
+        add({
+          id,
+          type: 'pulley',
+          // Anchor 要的是 { bodyId, port }，不是 op 里的 { body, port }——
+          // 直接塞 op.a 进去 resolvePortRef 会解析失败，滑轮静默不生效（物体会直接掉下去）
+          a: anchorOf(op.a) as never,
+          b: anchorOf(op.b) as never,
+          groundA: center,
+          groundB: center,
+          lengthA: Math.max(0.05, Math.hypot(A.point.x - center.x, A.point.y - center.y)),
+          lengthB: Math.max(0.05, Math.hypot(B.point.x - center.x, B.point.y - center.y)),
+          ratio: p.ratio ?? 1,
+        })
+        continue
+      }
+
+      if (op.type === 'track') {
+        const center = op.centerBodyId ? scene.bodies.find((b) => b.id === op.centerBodyId) : undefined
+        const ball = op.bodyId ? scene.bodies.find((b) => b.id === op.bodyId) : undefined
+        if (!center || !ball) {
+          warnings.push(`圆轨道 ${id} 缺圆心物体或球，跳过`)
+          continue
+        }
+        // 半径默认 = 轨道内表面半径 − 球的半径（球心走的圆），agent 不用自己减
+        const ballR = ball.shape.type === 'circle' ? ball.shape.r : 0
+        const centerR = center.shape.type === 'arc' || center.shape.type === 'circle' ? center.shape.r : 0.6
+        const radius = p.radius ?? Math.max(0.05, centerR - ballR)
+        add({
+          id,
+          type: 'track',
+          bodyId: ball.id,
+          centerBodyId: center.id,
+          radius,
+          side: p.side === 1 ? 'outer' : 'inner',
+        })
+        continue
+      }
+
+      if (op.type === 'prismatic') {
+        const rail = op.centerBodyId ? scene.bodies.find((b) => b.id === op.centerBodyId) : undefined
+        if (!op.bodyId || !rail) {
+          warnings.push(`导轨 ${id} 缺滑块或导轨本体，跳过`)
+          continue
+        }
+        add({
+          id,
+          type: 'prismatic',
+          bodyId: op.bodyId,
+          centerBodyId: rail.id,
+          axis: p.axis === 1 ? 'y' : 'x',
+          lower: p.lower,
+          upper: p.upper,
+        })
+        continue
+      }
+
       warnings.push(`不支持的约束类型 ${String(op.type)}，跳过`)
       continue
     }
 
     if (op.op === 'addField') {
       const mag = op.magnitude ?? 0
+      // 有界场：先建一个区域，再让场只在这块区域里生效
+      let regionId: string | undefined
+      if (op.region) {
+        const reg = op.region
+        regionId = `region${scene.regions.length + 1}`
+        const shape: Shape =
+          reg.kind === 'circle'
+            ? { type: 'circle', r: reg.r ?? 0.6 }
+            : { type: 'rect', w: reg.w ?? 2, h: reg.h ?? 2 }
+        scene.regions.push({
+          id: regionId,
+          shape,
+          transform: { x: reg.x, y: reg.y, angle: 0 },
+          label: op.type === 'B' ? '磁场区' : '电场区',
+          role: 'field',
+        })
+      }
       if (op.type === 'B') {
-        scene.fields.push({ id: `f${scene.fields.length + 1}`, kind: 'uniform', type: 'B', bz: mag })
+        scene.fields.push({ id: `f${scene.fields.length + 1}`, kind: 'uniform', type: 'B', bz: mag, regionId })
       } else {
         const rad = ((op.angleDeg ?? 90) * Math.PI) / 180
         scene.fields.push({
@@ -689,6 +836,7 @@ export function sceneFromOps(ops: BuildOp[], title = 'AI 搭的场景'): ParseRe
           kind: 'uniform',
           type: 'E',
           vector: { x: Math.cos(rad) * mag, y: Math.sin(rad) * mag },
+          regionId,
         })
       }
       continue

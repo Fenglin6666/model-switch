@@ -74,15 +74,3 @@ export function measure(
     momentumScale: pScale,
   }
 }
-
-/** 相对误差，用于 UI 的黄/红分级 */
-export function relativeDrift(current: number, initial: number): number {
-  const scale = Math.max(Math.abs(initial), 1e-6)
-  return Math.abs(current - initial) / scale
-}
-
-export function driftLevel(rel: number): 'ok' | 'warn' | 'bad' {
-  if (rel > 0.02) return 'bad'
-  if (rel > 0.005) return 'warn'
-  return 'ok'
-}

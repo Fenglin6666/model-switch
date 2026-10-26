@@ -29,7 +29,8 @@ describe('气缸/理想气体', () => {
   it('升温后 P·V 增大，气体体积/温度跟着变', () => {
     const p = presetById('gas')!
     const s = p.build()
-    s.gases[0]!.temperature = 350
+    // 温度的真源是 params.T（layout 会把它展开进 gases），不是直接改 gases
+    s.params = { ...s.params, T: 350 }
     p.layout?.(s)
     const sim = new Simulation(s)
     for (let i = 0; i < 1200; i++) sim.step()
@@ -52,5 +53,33 @@ describe('滑轮/绳连接体', () => {
     expect(B.vy).toBeLessThan(-1.2)
     expect(Math.abs(A.vy + B.vy)).toBeLessThan(0.1)
     expect(sim.state.criteria.energy?.pass).toBe(true)
+  })
+})
+
+describe('气缸参数真的接上了（曾经是死滑杆）', () => {
+  it('改 params.T 会改到气体温度，改 params.P0 会改到外界压强', () => {
+    const p = presetById('gas')!
+    const s = p.build()
+    // 不调 layout：温度是 build 里的硬编码值
+    expect(s.gases[0]!.temperature).toBe(300)
+    // 调 layout：按 params 展开
+    s.params = { T: 420, n: 2, P0: 130 }
+    p.layout?.(s)
+    expect(s.gases[0]!.temperature).toBe(420)
+    expect(s.gases[0]!.n).toBe(2)
+    expect(s.gases[0]!.ambientPressure).toBe(130)
+  })
+
+  it('温度越高，同一体积下压强越大（P = nRT/V）', () => {
+    const p = presetById('gas')!
+    const mk = (T: number) => {
+      const s = p.build()
+      s.params = { T, n: 1, P0: 100 }
+      p.layout?.(s)
+      const sim = new Simulation(s)
+      for (let i = 0; i < 240; i++) sim.step()
+      return sim.state.gases.gas!.p
+    }
+    expect(mk(400)).toBeGreaterThan(mk(300))
   })
 })

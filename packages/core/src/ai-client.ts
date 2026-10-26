@@ -83,9 +83,6 @@ export const DEFAULT_AI_CONFIG: Omit<AiConfig, 'key'> = {
   model: 'glm-4.6',
 }
 
-/** 建议的模型（用户可改） */
-export const AI_MODEL_SUGGESTIONS = ['glm-4.6', 'glm-4.5', 'deepseek-chat', 'deepseek-reasoner']
-
 /** key 的形态像哪一家——用来抓「拿 DeepSeek 的 key 打智谱端点」这种错配 */
 export function guessProviderByKey(key: string): Provider | null {
   const k = key.trim()

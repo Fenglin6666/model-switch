@@ -906,10 +906,6 @@ export class Simulation {
     return this.state.criteria
   }
 
-  getWorldBody(id: string): PlanckBody | undefined {
-    return this.byId.get(id)
-  }
-
   get finished(): boolean {
     const d = this.scene.world.duration
     return d !== undefined && this.state.t >= d - 1e-9

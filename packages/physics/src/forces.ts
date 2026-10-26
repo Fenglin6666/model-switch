@@ -1,7 +1,7 @@
 /**
  * 场力（架构 §5.3）。
  *
- * 关键修正（见 docs/PHYSICS.md §3.3）：洛伦兹力不能用「每帧加外力」。
+ * 关键修正（见 docs/ARCHITECTURE.md §4.1）：洛伦兹力不能用「每帧加外力」。
  * F = qv×B 在二维里就是精确旋转，用速度旋转代替力，速度模长严格不变。
  */
 import type { Body as PlanckBody } from 'planck'

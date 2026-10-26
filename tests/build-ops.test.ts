@@ -228,3 +228,107 @@ describe('电磁感应：circuit 指令', () => {
     expect(r.warnings.join(' ')).toContain('找不到匀强磁场')
   })
 })
+
+describe('agent 基元：滑轮 / 圆轨道 / 导轨 / 有界场', () => {
+  it('滑轮：agent 只给「轮 + 两端」，绳长和轮心由我们算', () => {
+    const { scene } = build([
+      { op: 'addBody', id: 'wheel', shape: { kind: 'circle', r: 0.15 }, at: { x: 0, y: 2 }, behavior: 'fixed' },
+      { op: 'addBody', id: 'm1', shape: { kind: 'rect', w: 0.2, h: 0.2 }, at: { x: -0.4, y: 1 }, behavior: 'moving', mass: 1 },
+      { op: 'addBody', id: 'm2', shape: { kind: 'rect', w: 0.2, h: 0.2 }, at: { x: 0.4, y: 0.6 }, behavior: 'moving', mass: 2 },
+      { op: 'addConstraint', type: 'pulley', bodyId: 'wheel', a: { body: 'm1', port: 'top' }, b: { body: 'm2', port: 'top' } },
+    ])
+    const c = scene.constraints.find((x) => x.type === 'pulley')
+    expect(c).toBeTruthy()
+    if (c?.type === 'pulley') {
+      // 轮心就是两个 ground anchor
+      expect(c.groundA.x).toBeCloseTo(0, 5)
+      expect(c.groundA.y).toBeCloseTo(2, 5)
+      expect(c.groundB).toEqual(c.groundA)
+      // 绳长 = 轮心到挂点的距离
+      expect(c.lengthA).toBeCloseTo(Math.hypot(-0.4, 1.1 - 0.1 - 2 + 0.1), 1)
+      expect(c.lengthA).toBeGreaterThan(0)
+      expect(c.lengthB).toBeGreaterThan(0)
+    }
+    // 跑起来：重的那个下降，轻的上升
+    const sim = run(scene, 240)
+    expect(sim.state.bodies.m2!.y).toBeLessThan(0.6)
+    expect(sim.state.bodies.m1!.y).toBeGreaterThan(1)
+  })
+
+  it('圆轨道：半径默认 = 轨道内半径 − 球半径（agent 不用自己减）', () => {
+    const { scene } = build([
+      { op: 'addBody', id: 'arc', shape: { kind: 'circle', r: 1 }, at: { x: 0, y: 0 }, behavior: 'fixed' },
+      { op: 'addBody', id: 'ball', shape: { kind: 'circle', r: 0.1 }, at: { x: 0.9, y: 0 }, behavior: 'rolling', mass: 0.2 },
+      { op: 'addConstraint', type: 'track', bodyId: 'ball', centerBodyId: 'arc' },
+    ])
+    const c = scene.constraints.find((x) => x.type === 'track')
+    expect(c?.type).toBe('track')
+    if (c?.type === 'track') expect(c.radius).toBeCloseTo(0.9, 5)
+
+    // 给一个切向速度，球心到圆心的距离应保持不变（被轨道约束住）
+    const ball = scene.bodies.find((b) => b.id === 'ball')!
+    ball.velocity = { x: 0, y: 2 }
+    const sim = run(scene, 120)
+    const st = sim.state.bodies.ball!
+    expect(Math.hypot(st.x, st.y)).toBeCloseTo(0.9, 1)
+  })
+
+  it('导轨：axis/行程限位落到场景里，滑块只能沿轴动', () => {
+    const { scene } = build([
+      { op: 'addBody', id: 'rail', shape: { kind: 'rect', w: 6, h: 0.2 }, at: { x: 0, y: 0 }, behavior: 'fixed' },
+      { op: 'addBody', id: 'slider', shape: { kind: 'rect', w: 0.2, h: 0.2 }, at: { x: -1, y: 0.2 }, behavior: 'moving', mass: 1, force: { x: 2, y: 0 } },
+      { op: 'addConstraint', type: 'prismatic', bodyId: 'slider', centerBodyId: 'rail', params: { axis: 0, lower: -2, upper: 0.5 } },
+    ])
+    const c = scene.constraints.find((x) => x.type === 'prismatic')
+    expect(c?.type).toBe('prismatic')
+    if (c?.type === 'prismatic') {
+      expect(c.axis).toBe('x')
+      expect(c.upper).toBe(0.5)
+    }
+    const sim = run(scene, 240 * 3)
+    const st = sim.state.bodies.slider!
+    expect(Math.abs(st.y - 0.2)).toBeLessThan(0.05) // 竖直被锁住
+    expect(st.x).toBeCloseTo(-0.5, 1) // 走到上限（相对起点 -1，+0.5）
+  })
+
+  it('有界磁场：场只建在区域里，区域外不偏转', () => {
+    const { scene } = build([
+      {
+        op: 'addBody',
+        id: 'q',
+        shape: { kind: 'circle', r: 0.08 },
+        at: { x: -1.5, y: 0 },
+        behavior: 'moving',
+        mass: 1,
+        charge: 1,
+      },
+      { op: 'addField', type: 'B', magnitude: 2, region: { kind: 'rect', x: 0, y: 0, w: 2, h: 2 } },
+    ])
+    expect(scene.regions.length).toBe(1)
+    const f = scene.fields[0]!
+    expect(f.kind).toBe('uniform')
+    if (f.kind === 'uniform') expect(f.regionId).toBe(scene.regions[0]!.id)
+
+    // 从左侧以 +x 射入，穿过 2 m 宽的磁场区后再直线离开
+    const q = scene.bodies.find((b) => b.id === 'q')!
+    q.velocity = { x: 3, y: 0 }
+    scene.world.gravity = 0
+    const sim = run(scene, 960)
+    const st = sim.state.bodies.q!
+    expect(st.x).toBeGreaterThan(1) // 穿过去了
+    expect(Math.abs(st.vy)).toBeGreaterThan(0.05) // 场内被偏转过
+  })
+
+  it('有界电场：区域外的物体不受力（和受力显示走同一套判定）', () => {
+    const { scene } = build([
+      { op: 'addBody', id: 'q', shape: { kind: 'circle', r: 0.08 }, at: { x: 2.5, y: 0 }, behavior: 'moving', mass: 1, charge: 1 },
+      { op: 'addField', type: 'E', magnitude: 2, angleDeg: 0, region: { kind: 'rect', x: 0, y: 0, w: 1, h: 1 } },
+    ])
+    scene.world.gravity = 0
+    const sim = run(scene, 240)
+    const st = sim.state.bodies.q!
+    // 在场区外（x=2.5，区域只到 0.5）：既不该动，也不该显示 qE 箭头
+    expect(Math.abs(st.vx)).toBeLessThan(0.01)
+    expect(st.force.ex).toBe(0)
+  })
+})

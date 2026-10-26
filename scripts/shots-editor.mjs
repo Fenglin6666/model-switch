@@ -110,6 +110,27 @@ check(
   `readoutBottom=${foot.readoutBottom} linkTop=${foot.linkTop}`,
 )
 
+// 5. 左面板能滚到底：滚到上限后上限不能跟着变小
+// 这条是被真 bug 逼出来的——panelMaxScroll 里含着 panelScroll，滚一半就互相抵消，
+// 结果「机制」区的最后几个滑杆永远滚不出来。
+const scroll = await page.evaluate(async () => {
+  const a = window.app
+  // 用参数最多的场景：单棒切割的棒身上挂着导轨 + 电路，面板一定超过一屏
+  a.loadPreset('railEmf')
+  await new Promise((r) => setTimeout(r, 200))
+  a.selectedId = 'rod'
+  await new Promise((r) => setTimeout(r, 200))
+  a.panelScroll = -a.panelMaxScroll
+  const first = { max: a.panelMaxScroll, scroll: a.panelScroll }
+  await new Promise((r) => setTimeout(r, 150))
+  return { first, after: { max: a.panelMaxScroll, scroll: a.panelScroll } }
+})
+check(
+  '左面板滚到上限后不回弹（上限不随滚动量缩小）',
+  scroll.after.scroll === -scroll.after.max && scroll.after.max > 0,
+  JSON.stringify(scroll),
+)
+
 check('无运行时错误', errors.length === 0, errors.slice(0, 2).join(' | '))
 
 const failed = results.filter((r) => !r.ok)

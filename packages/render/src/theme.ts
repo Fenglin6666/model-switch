@@ -97,14 +97,3 @@ export function roundRect(
   ctx.arcTo(x, y, x + rr, y, rr)
   ctx.closePath()
 }
-
-/** 文本截断（按字符宽度粗估，中文按 1em 计） */
-export function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (ctx.measureText(text).width <= maxWidth) return text
-  let out = ''
-  for (const ch of text) {
-    if (ctx.measureText(out + ch + '…').width > maxWidth) break
-    out += ch
-  }
-  return out + '…'
-}
