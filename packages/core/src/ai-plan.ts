@@ -20,7 +20,22 @@ import { PARAM_META } from './params'
 import { buildChain, type ChainStage, type ChainStageKind } from './chain'
 import { resolvePortRef, semanticPort, type PortKind } from './ports'
 import { analyzeScene, summarizeReport } from './validate'
-import type { ParseResult } from './problem'
+
+/**
+ * 生成的统一契约。以前这里还有一条「规则解析」实现（`problem.ts` 的 parseProblem），
+ * 已经删掉——现在只有 AI 产出它，失败时由编辑器兜底。
+ */
+export type ParseOk = {
+  ok: true
+  scene: Scene
+  archetype: string
+  used: Record<string, number | string>
+  warnings: string[]
+  /** 从题干里读出的建模假设（滑块/小球、滚动、光滑/粗糙、固定/可移动、空气阻力） */
+  assumptions: string[]
+}
+export type ParseErr = { ok: false; error: string; hints: string[]; unsupported?: string[] }
+export type ParseResult = ParseOk | ParseErr
 
 export type AiMode = 'preset' | 'chain' | 'build' | 'unsupported'
 

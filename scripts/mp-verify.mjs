@@ -103,14 +103,14 @@ try {
   check('水平动量守恒', !!trough.momentum && trough.momentum.pass)
   await shot('mp-02-trough.png')
 
-  // 题目假设：同一段文本，滑块 + 光滑圆弧
-  const assumption = await mp.evaluate(() => {
+  // 圆弧场景：光滑圆弧的摩擦为 0（规则解析删掉后，这里直接开预置场景验）
+  const arcScene = await mp.evaluate(() => {
     const a = getCurrentPages().slice(-1)[0].app
-    const r = a.loadProblemText('倾角为30°的斜面底端与半径R=0.5m的光滑圆弧相切，质量m=1kg的滑块从斜面顶端由静止释放，斜面动摩擦因数μ=0.2。')
+    a.loadPreset('rampArc')
     const arc = a.doc.bodies.find((b) => b.id === 'arc')
-    return { ok: r.ok, preset: a.presetId, muArc: arc ? arc.friction : null }
+    return { preset: a.presetId, muArc: arc ? arc.friction : null }
   })
-  check('题目假设：滑块 + 光滑圆弧', assumption.ok && assumption.preset === 'rampArc' && assumption.muArc === 0, JSON.stringify(assumption))
+  check('圆弧场景：光滑圆弧摩擦为 0', arcScene.preset === 'rampArc' && arcScene.muArc === 0, JSON.stringify(arcScene))
   await shot('mp-03-assumption.png')
 
   // 分享 token
@@ -220,10 +220,27 @@ try {
     bank.detail.open === 's-incline' && bank.detail.models === 0 && bank.detail.hasGenerate,
     JSON.stringify(bank.detail),
   )
+  // 小程序端没有 AI（域名白名单过不去），所以点生成必须**明确失败**，不能静默什么都不做
   check(
-    '详情页点生成 → 进画布并写入本地建模库',
-    bank.after === 'scene' && bank.models === 1 && bank.preset === 'incline' && bank.stored > 200,
-    JSON.stringify({ models: bank.models, title: bank.title, preset: bank.preset, stored: bank.stored }),
+    '详情页点生成 → 小程序没有 AI，明确失败且不建模型',
+    bank.after === 'bank' && bank.models === 0,
+    JSON.stringify({ mode: bank.after, models: bank.models }),
+  )
+
+  // 落库链路照常（不碰网络）：直接把一个计划交给 App，验证「建模库能存能开」
+  const applied = await mp.evaluate(() => {
+    const a = getCurrentPages().slice(-1)[0].app
+    const r = a.applyPlan({ mode: 'preset', archetype: 'incline', params: { theta: 30 } }, '', 's-incline')
+    let stored = 0
+    try {
+      stored = String(wx.getStorageSync('slogan.library.v1') || '').length
+    } catch (e) {}
+    return { ok: r.ok, mode: a.mode, models: a.library.models.length, preset: a.doc.meta.preset, stored }
+  })
+  check(
+    'AI 计划落库 → 进画布并写入本地建模库',
+    applied.ok && applied.mode === 'scene' && applied.models === 1 && applied.preset === 'incline' && applied.stored > 200,
+    JSON.stringify(applied),
   )
   await shot('mp-09-generated.png')
 
@@ -231,6 +248,10 @@ try {
   const chipTap = await mp.evaluate(() => {
     const page = getCurrentPages().slice(-1)[0]
     const a = page.app
+    if (!a.ui.hits.some((h) => h.id && h.id.startsWith('assume:'))) {
+      a.loadPreset('incline')
+      a.frame(0, 0)
+    }
     const hit = a.ui.hits.find((h) => h.id && h.id.startsWith('assume:'))
     if (!hit) return { id: null, before: a.doc.params.ball, after: a.doc.params.ball }
     const x = hit.rect.x + hit.rect.w / 2

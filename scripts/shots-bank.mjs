@@ -94,12 +94,26 @@ const detail = await page.evaluate(() => {
 check('详情页有「生成建模」按钮', detail.hasGenerate, detail.title ?? '')
 await shot('221-problem-detail')
 
-// 3. 详情页点「生成建模」→ 进画布 + 入库
+// 3a. 没配 AI 时点「生成建模」→ 明确提示，不进画布、不建模型（不能静默失败）
 await tap('problem:generate')
-const generated = await state()
-check('详情页点生成 → 进画布并入库', generated.mode === 'scene' && generated.models === 1, JSON.stringify(generated))
-const draft = await page.evaluate(() => ({ fromProblem: window.app.fromProblem === true }))
-check('生成的场景带「题目初稿」标记（舞台上标可改）', draft.fromProblem, JSON.stringify(draft))
+const noKey = await state()
+check(
+  '没配 AI 时点生成 → 明确提示，不静默失败',
+  noKey.mode === 'bank' && noKey.models === 0,
+  JSON.stringify(noKey),
+)
+
+// 3b. 落库链路（不碰网络）：直接把一个 AI 计划交给 App
+const applied = await page.evaluate(() => {
+  const a = window.app
+  const r = a.applyPlan(
+    { mode: 'preset', archetype: 'rampArc', params: { theta: 35, R: 0.8 }, assumptions: ['滑块，平动', '圆弧光滑'] },
+    '',
+    's-ramp-arc',
+  )
+  return { ok: r.ok, mode: a.mode, models: a.library.models.length, fromProblem: a.fromProblem === true }
+})
+check('AI 计划落库 → 进画布 + 入库 + 初稿标记', applied.ok && applied.mode === 'scene' && applied.models === 1 && applied.fromProblem, JSON.stringify(applied))
 await shot('222-generated')
 
 // 4. 回题库再点同一道题：详情变成「打开模型」
@@ -175,7 +189,7 @@ check('确认后清空建模库', cleared && cleared.models === 0 && !cleared.co
 // 7. 建模库：新建文件夹 + 移动 + 持久化
 await page.evaluate(() => {
   const a = window.app
-  a.generateFromText(a.allProblems().find((p) => p.id === 's-incline').text, 's-incline')
+  a.applyPlan({ mode: 'preset', archetype: 'incline', params: { theta: 30 } }, '', 's-incline')
   a.toLibrary()
 })
 await wait(400)
@@ -300,7 +314,7 @@ const aiEntry = await page.evaluate(() => {
   return { hasRow, sheet, hasKey, label: a.aiLabel(), ready: a.aiReady() }
 })
 check(
-  '用户页有「AI 建模」入口，点开是设置面板（未配置时走规则解析）',
+  '用户页有「AI 建模」入口，点开是设置面板',
   aiEntry.hasRow && aiEntry.sheet && aiEntry.hasKey && !aiEntry.ready,
   JSON.stringify(aiEntry),
 )
@@ -316,22 +330,21 @@ await wait(400)
 const configured = await page.evaluate(() => ({ ready: window.app.aiReady(), label: window.app.aiLabel() }))
 check('填了 key 之后状态变成已就绪', configured.ready && configured.label.includes('glm-4.6'), JSON.stringify(configured))
 
-const fallback = await page.evaluate(async () => {
+const aiFail = await page.evaluate(async () => {
   const a = window.app
-  const before = a.library.models.length
+  const before = { models: a.library.models.length, mine: a.library.problems.length }
   const r = await a.generateAsync('倾角 30° 的斜面长 2 m，动摩擦因数 0.25，小滑块从顶端由静止下滑，求到底端的速度。')
-  const m = a.library.models[0]
   return {
     ok: r.ok,
-    grew: a.library.models.length > before,
-    preset: m?.scene?.meta?.preset ?? null,
+    grewModels: a.library.models.length > before.models,
+    stashedProblem: a.library.problems.length > before.mine,
     message: r.message,
   }
 })
 check(
-  'AI 请求失败 → 回退规则解析，照样建出模型（不比没有 AI 更差）',
-  fallback.ok && fallback.grew && fallback.preset === 'incline',
-  JSON.stringify(fallback),
+  'AI 请求失败 → 明确报错 + 题目存进「我的题目」，不静默失败',
+  !aiFail.ok && !aiFail.grewModels && aiFail.stashedProblem,
+  JSON.stringify(aiFail),
 )
 
 await page.evaluate(() => localStorage.removeItem('slogan.ai.v1'))

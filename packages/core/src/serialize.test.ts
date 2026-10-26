@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildPresetScene } from './presets'
 import { decodeScene, decodeShare, encodeScene, encodeShare, normalizeScene, validateScene } from './serialize'
 import { applyEdits } from './scene'
-import { parseProblem } from './problem'
+import { presetById } from './presets'
 
 describe('序列化 / 分享 / 校验', () => {
   it('预置场景 encode → decode 后一致', () => {
@@ -58,10 +58,15 @@ describe('序列化 / 分享 / 校验', () => {
     expect(decodeShare(text).constraints.length).toBe(s.constraints.length)
   })
 
-  it('题目解析场景保持紧凑分享', () => {
-    const r = parseProblem('倾角30°的粗糙斜面，质量m=0.5kg的小球从斜面顶端由静止滚下（纯滚动）。')
-    if (!r.ok) throw new Error(r.error)
-    const text = encodeShare(r.scene)
+  it('小球纯滚动的斜面场景保持紧凑分享', () => {
+    // 以前这里用 parseProblem 造场景；规则解析删掉后，直接按 AI 那条路造：
+    // preset.build() + 改 params + layout()
+    const s = buildPresetScene('incline')
+    s.params.ball = 1
+    s.params.model = 1
+    s.meta.assumptions = ['小球，纯滚动']
+    presetById('incline')!.layout?.(s)
+    const text = encodeShare(s)
     expect(text.startsWith('p1.incline.')).toBe(true)
     expect(text.length).toBeLessThan(500)
     const back = decodeShare(text)
@@ -71,10 +76,12 @@ describe('序列化 / 分享 / 校验', () => {
     expect(back.meta.assumptions ?? []).toContain('小球，纯滚动')
   })
 
-  it('圆弧上的滑块解析场景也保持紧凑', () => {
-    const r = parseProblem('倾角30°的斜面底端接半径R=0.5m的光滑圆弧，质量m=1kg的滑块从斜面顶端由静止释放，斜面动摩擦因数μ=0.2。')
-    if (!r.ok) throw new Error(r.error)
-    const text = encodeShare(r.scene)
+  it('圆弧上的滑块场景也保持紧凑', () => {
+    const s = buildPresetScene('rampArc')
+    s.params.ball = 0
+    s.meta.assumptions = ['滑块，平动']
+    presetById('rampArc')!.layout?.(s)
+    const text = encodeShare(s)
     expect(text.startsWith('p1.rampArc.')).toBe(true)
     const back = decodeShare(text)
     const b = back.bodies.find((x) => x.id === 'ball')!

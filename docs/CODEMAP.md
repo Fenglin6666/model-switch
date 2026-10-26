@@ -15,13 +15,13 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 4105 |
+| `packages/ui/src/app.ts` | 4087 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
-| `packages/ui/src/pages/bank.ts` | 365 |
+| `packages/ui/src/pages/bank.ts` | 366 |
 | `packages/ui/src/pages/library.ts` | 275 |
 | `packages/ui/src/pages/user.ts` | 178 |
-| `packages/ui/src/pages/host.ts` | 59 |
+| `packages/ui/src/pages/host.ts` | 60 |
 | `packages/ui/src/pages/shared.ts` | 57 |
 | `packages/ui/src/scene-bounds.ts` | 37 |
 | `packages/ui/src/widgets.ts` | 496 |
@@ -29,8 +29,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/ui/src/chart.ts` | 194 |
 | `packages/core/src/presets.ts` | 1525 |
 | `packages/core/src/scene.ts` | 517 |
-| `packages/core/src/problem.ts` | 279 |
-| `packages/core/src/ai-plan.ts` | 758 |
+| `packages/core/src/ai-plan.ts` | 773 |
 | `packages/core/src/ai-client.ts` | 116 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
@@ -129,8 +128,7 @@ D:\Slogan
 │  ├─ core/src/
 │  │  ├─ scene.ts               Scene 类型 / JSON Pointer / 材质对
 │  │  ├─ presets.ts             18 个预置场景 + layout（生成器的落点）
-│  │  ├─ problem.ts             题干 → Scene 的规则解析（v0，离线兜底）
-│  │  ├─ ai-plan.ts             LLM 的决定层：目录 / 提示词 / 解析 / 校验（纯函数）
+│  │  ├─ ai-plan.ts             生成链路：目录 / 提示词 / 解析 / 决定 → Scene（纯函数）
 │  │  ├─ ai-client.ts           调接口（key 由前端带，服务端不存）
 │  │  ├─ recognize.ts           手绘一笔 → 圆/矩形/多边形/直线/折线
 │  │  ├─ bank.ts                题库：分类 + 15 道题 + 每条的 expect
@@ -172,7 +170,7 @@ D:\Slogan
 ├─ scripts/
 │  ├─ doc-facts.mjs             文档行数校验（npm run doc:check）
 │  ├─ build-miniprogram.mjs     打包小程序
-│  ├─ mp-verify.mjs             小程序自动化验证（15 项）
+│  ├─ mp-verify.mjs             小程序自动化验证（16 项）
 │  ├─ shots-editor.mjs          编辑器截图（3 项：README 的 240/241）
 │  ├─ shots-draw.mjs            画图 + 组件验收（25 项）
 │  ├─ shots-bank.mjs            题库/详情/建模库/用户页 + 改名迁移 + AI 回退（19 项）
@@ -187,7 +185,6 @@ D:\Slogan
 | 想做的事 | 改哪里 |
 |---|---|
 | 加一道题库题目 | `core/bank.ts` 加一条（带 `expect`），`tests/bank.test.ts` 会验证「说能建的是不是真能建」 |
-| 改题干解析规则 | `core/problem.ts` 的 `parseProblem` |
 | 改 AI 提示词 / 模型目录 | `core/ai-plan.ts`（`AI_SYSTEM_PROMPT`，目录从 PRESETS 自动派生） |
 | 改 AI 请求（端点/超时/参数） | `core/ai-client.ts` 的 `askPlan` |
 | 改手绘识别阈值 | `core/recognize.ts`（圆度 / 面积占比 / 直线度） |

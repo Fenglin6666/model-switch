@@ -42,9 +42,10 @@ export type PagesHost = {
   askGenerate(): void
   openProblemDetail(id: string): void
   openModel(id: string): void
-  generateFromText(text: string, problemId?: string): { ok: boolean; message: string }
-  /** 有 AI 走 AI（异步，结果用 toast + 自动进画布反馈），没有就同步走规则 */
+  /** 只有 AI 这一条生成路；没配 key 时返回失败并提示 */
   generateAny(text: string, problemId?: string): { ok: boolean; message: string }
+  /** 编辑器兜底：开一张空白画布手动搭 */
+  loadBlank(): void
   /** 用户页「AI 建模」那一行显示的副标题 */
   aiLabel(): string
   openAiSettings(): void

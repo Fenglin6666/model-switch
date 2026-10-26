@@ -31,8 +31,7 @@ import { buildChain, defaultChain, stageLabel, type ChainStage, type ChainStageK
 import { applySnap, findSnap } from '@core/snap'
 import { describeRecognized, recognizeStroke } from '@core/recognize'
 import { decodeShare, encodeShare } from '@core/serialize'
-import { parseProblem } from '@core/problem'
-import { sceneFromPlan } from '@core/ai-plan'
+import { sceneFromPlan, type AiPlan, type ParseResult } from '@core/ai-plan'
 import { anchorLocal } from '@core/ports'
 import { bodyFieldByKey, bodyFieldRows } from '@core/body-fields'
 import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, type AiConfig } from '@core/ai-client'
@@ -3704,7 +3703,7 @@ const focus = this.focusBody(this.doc)
 
   // ---- 生成建模（唯一入口） ----
 
-  /** 点「生成建模」：壳负责弹输入框，拿到题干后走同一条生成链路 */
+  /** 点「生成建模」：壳负责弹输入框，拿到题干后交给 AI */
   askGenerate(): void {
     if (!this.host.askProblem) {
       this.toast('这个壳没有题目输入入口')
@@ -3712,65 +3711,67 @@ const focus = this.focusBody(this.doc)
     }
     this.host.askProblem((text) => {
       if (!text) return { ok: false, message: '' }
-      // 配了 AI 就是异步的：先把弹层关掉，结果用 toast + 自动进画布反馈。
-      // 不在这里 await，因为壳的弹层接口是同步返回。
-      if (this.aiReady()) {
-        void this.generateAsync(text)
-        return { ok: true, message: 'AI 正在读题…' }
+      if (!this.aiReady()) {
+        return { ok: false, message: '自动建模需要先配 AI：用户页 →「AI 建模」填一个 API key。也可以直接在画布上手动搭。' }
       }
-      return this.generateFromText(text)
+      // AI 是异步的：先把弹层关掉，结果用 toast + 自动进画布反馈。
+      // 不在这里 await，因为壳的弹层接口是同步返回。
+      void this.generateAsync(text)
+      return { ok: true, message: 'AI 正在读题…' }
     })
   }
 
   /**
    * 题目文本 → 模型 → 存进建模库 → 打开画布。
-   * 失败时**不假装**：说明缺什么，并把题存进「我的题目」方便以后重试。
    *
-   * 这是**规则解析**那条路（离线、确定性）。配了 AI 的壳走 `generateAsync`。
-   */
-  generateFromText(text: string, problemId?: string): { ok: boolean; message: string } {
-    return this.commitGenerated(parseProblem(text), text, problemId, 'rules')
-  }
-
-  /**
-   * 配了 AI 就走 AI：让模型决定用哪个场景、填哪些参数、补哪些假设。
-   *
-   * 三道保险，保证「AI 挂了不比没有 AI 更差」：
-   *   1. 没配 key / 当前壳不支持 → 直接走规则解析；
-   *   2. 请求失败（超时、余额、JSON 不合法、选了不存在的场景）→ 记一条 toast，回退规则解析；
-   *   3. AI 明确说 unsupported → **不回退**（回退等于把它的判断推翻），按拒绝处理。
+   * **只有 AI 这一条路**（2026-10-26 去掉了规则解析）。失败时**不假装**：
+   * 说明缺什么、把题存进「我的题目」，并提示可以手动搭。编辑器是兜底，不是第二套生成器。
    */
   async generateAsync(text: string, problemId?: string): Promise<{ ok: boolean; message: string }> {
-    if (!this.aiReady() || this.aiBusy) {
-      if (this.aiBusy) return { ok: false, message: 'AI 正在读题，稍等' }
-      return this.generateFromText(text, problemId)
+    if (this.aiBusy) return { ok: false, message: 'AI 正在读题，稍等' }
+    if (!this.aiReady()) {
+      const message = '自动建模需要先配 AI：用户页 →「AI 建模」填一个 API key'
+      this.toast(message + '（也可以在画布上手动搭）')
+      return { ok: false, message }
     }
     this.aiBusy = true
     this.toast(`AI 正在读题（${this.aiConfig!.model}）…`)
     try {
       const r = await askPlan(this.aiConfig!, text)
       if (!r.ok) {
-        this.toast(`AI 没给出可用的模型（${r.error}），已改用规则解析`)
-        return this.generateFromText(text, problemId)
+        // 不再回退规则解析：明确说 AI 没给出结果，把题留下，指路手动搭
+        return this.commitGenerated(
+          { ok: false, error: `AI 没给出可用的模型：${r.error}`, hints: ['可以直接在画布上手动搭'] },
+          text,
+          problemId,
+          r.ms,
+        )
       }
-      const parsed = sceneFromPlan(r.plan)
-      return this.commitGenerated(parsed, text, problemId, 'ai', r.ms)
+      return this.commitGenerated(sceneFromPlan(r.plan), text, problemId, r.ms)
     } finally {
       this.aiBusy = false
     }
   }
 
-  /** 把一次生成结果落到库里并打开。AI 和规则解析共用这一段，避免两条路各写一遍。 */
+  /**
+   * 把一个 AI 计划直接落成模型，**不碰网络**。
+   * 用途：验收脚本测「落库 + 打开画布」这一段（网络那半由 scripts/ai-check.mjs 测），
+   * 以及以后可能的「离线重放一个分享来的 plan」。
+   */
+  applyPlan(plan: AiPlan, text = '', problemId?: string): { ok: boolean; message: string } {
+    return this.commitGenerated(sceneFromPlan(plan), text, problemId)
+  }
+
+  /** 把一次生成结果落到库里并打开。 */
   private commitGenerated(
-    r: ReturnType<typeof parseProblem>,
+    r: ParseResult,
     text: string,
     problemId: string | undefined,
-    source: 'ai' | 'rules',
     ms?: number,
   ): { ok: boolean; message: string } {
     if (!r.ok) {
       const message = [r.error, ...r.hints].join(' ')
-      if (!problemId) {
+      if (!problemId && text.trim()) {
         const added = addProblem(this.library, makeMineProblem(text, `mine-${Date.now().toString(36)}`))
         if (!added.error) {
           this.library = added.library
@@ -3794,7 +3795,7 @@ const focus = this.focusBody(this.doc)
     // openModel → loadScene 会把 fromProblem 清掉，所以要在它之后置位：
     // 这份场景确实是「题目生成的初稿」，舞台上得标出来。
     this.fromProblem = true
-    const how = source === 'ai' ? `AI · ${this.aiConfig?.model ?? ''}` : '规则解析'
+    const how = `AI · ${this.aiConfig?.model ?? ''}`
     const took = ms !== undefined ? ` · ${(ms / 1000).toFixed(1)}s` : ''
     this.toast(`已生成「${problem?.title ?? r.scene.meta.title}」（${how}${took}）· 已存进建模库`)
     return { ok: true, message: `已生成「${r.scene.meta.title}」` }
@@ -3809,7 +3810,7 @@ const focus = this.focusBody(this.doc)
   /** 用户页「AI 建模」那一行显示什么 */
   aiLabel(): string {
     if (!this.host.ai) return '当前壳不支持'
-    if (!this.aiReady()) return '未配置 · 用规则解析'
+    if (!this.aiReady()) return '未配置 · 生成需要它，或手动搭'
     return `${this.aiConfig!.model} · 已就绪`
   }
 
@@ -3942,13 +3943,15 @@ const focus = this.focusBody(this.doc)
     this.generateAny(p.text, problemId)
   }
 
-  /** 供页面调用：有 AI 走 AI（异步），没有就同步走规则 */
+  /** 供页面调用：只有 AI 这一条路；没配 key 就明确告诉用户，并指路手动搭 */
   generateAny(text: string, problemId?: string): { ok: boolean; message: string } {
-    if (this.aiReady()) {
-      void this.generateAsync(text, problemId)
-      return { ok: true, message: 'AI 正在读题…' }
+    if (!this.aiReady()) {
+      const message = '自动建模需要先配 AI：用户页 →「AI 建模」填一个 API key'
+      this.toast(message + '（也可以在画布上手动搭）')
+      return { ok: false, message }
     }
-    return this.generateFromText(text, problemId)
+    void this.generateAsync(text, problemId)
+    return { ok: true, message: 'AI 正在读题…' }
   }
 
   // ---- 文件夹 ----
@@ -3993,27 +3996,6 @@ const focus = this.focusBody(this.doc)
   // -------------------------------------------------------------------------
   // 分享 / 提示
   // -------------------------------------------------------------------------
-
-  /**
-   * 题目 → 建模。当前生成链路是 `parseProblem`（规则解析）；
-   * AI / 图片 / 拍照入口后续接同一条契约：Scene + 假设 + unsupported，失败一律落到手动编辑。
-   */
-  loadProblemText(text: string): { ok: boolean; message: string } {
-    const r = parseProblem(text)
-    if (!r.ok) {
-      return { ok: false, message: [r.error, ...r.hints].join(' ') }
-    }
-    this.loadScene(r.scene, null)
-    this.fromProblem = true
-    const used = Object.entries(r.used)
-      .filter(([k]) => k !== 'arc')
-      .map(([k, v]) => `${k}=${typeof v === 'number' ? Number(v.toFixed(2)) : v}`)
-      .join(' ')
-    const assumptions = r.assumptions.length ? ` · 假设：${r.assumptions.join('、')}` : ''
-    const msg = `已生成「${r.scene.meta.title}」${assumptions}${used ? ` · ${used}` : ''}${r.warnings.length ? `（${r.warnings.join('；')}）` : ''} · 初稿可直接改`
-    this.toast(msg)
-    return { ok: true, message: msg }
-  }
 
   // -------------------------------------------------------------------------
   // 页面（实现在 pages/：题库 / 详情 / 模型 / 用户）

@@ -336,7 +336,7 @@ export function renderProblemDetail(h: PagesHost): void {
     })
   } else {
     h.ui.text(
-      unsupported ? '当前自动建模还没覆盖这类题' : built ? '已经建过这道题' : '生成后可以直接拖、改参数',
+      unsupported ? '自动建模没覆盖这类题，但可以手动搭' : built ? '已经建过这道题' : '生成后可以直接拖、改参数',
       r.x + pad,
       footY + 18,
       { size: 10, color: THEME.inkSoft, maxWidth: r.w - pad * 2 - 130 },
@@ -345,14 +345,15 @@ export function renderProblemDetail(h: PagesHost): void {
 
   const btnW = unsupported ? 108 : 120
   const btn: Rect = { x: r.x + r.w - pad - btnW, y: footY, w: btnW, h: 36 }
+  // 自动建模建不了 → 落到编辑器（这是唯一的兜底，不再有第二套生成器）
   const action = unsupported
-    ? () => h.toast('等生成器覆盖了这类题，这道题就能直接建')
+    ? () => h.loadBlank()
     : built
       ? () => h.openModel(built.id)
       : () => h.generateAny(p.text, p.id)
-  h.ui.pillButton(btn, unsupported ? '暂不支持' : built ? '打开模型 →' : '生成建模 →', {
-    active: !unsupported,
-    size: unsupported ? 11 : 11.5,
+  h.ui.pillButton(btn, unsupported ? '手动搭 →' : built ? '打开模型 →' : '生成建模 →', {
+    active: true,
+    size: 11.5,
     weight: unsupported ? 600 : 650,
     onClick: action,
   })

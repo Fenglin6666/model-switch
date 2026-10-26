@@ -28,7 +28,6 @@ const FILES = [
   'packages/ui/src/chart.ts',
   'packages/core/src/presets.ts',
   'packages/core/src/scene.ts',
-  'packages/core/src/problem.ts',
   'packages/core/src/ai-plan.ts',
   'packages/core/src/ai-client.ts',
   'packages/core/src/recognize.ts',
