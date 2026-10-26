@@ -38,6 +38,7 @@ screenshots/*
 !screenshots/262-unsupported-now-generatable.png
 !screenshots/264-ai-probe-ok.png
 !screenshots/266-provider-deepseek.png
+!screenshots/267-speed-chip.png
 !screenshots/265-provider-mismatch.png
 !screenshots/263-ai-probe-bad.png
 !screenshots/240-editor.png

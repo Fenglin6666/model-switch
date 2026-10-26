@@ -81,6 +81,21 @@ const picked = await page.evaluate(() => {
 check('选中物体 → 检查器出现，且带「存为组件」入口', picked.kind !== 'static' && picked.save, JSON.stringify(picked))
 await shot('241-editor-selected')
 
+// 3. 倍率：第一次点就变慢（找临界靠它，不是靠一键跳）
+const speed = await page.evaluate(() => {
+  const a = window.app
+  const before = a.speed
+  const hit = a.ui.hits.find((h) => h.id === 'ctl:speed')
+  hit && hit.onClick()
+  a.frame(0, 0)
+  return { before, after: a.speed, hasChip: !!hit }
+})
+check(
+  '倍率 chip 在舞台上，点一下变慢（0.5×）',
+  speed.hasChip && speed.before === 1 && speed.after === 0.5,
+  JSON.stringify(speed),
+)
+
 check('无运行时错误', errors.length === 0, errors.slice(0, 2).join(' | '))
 
 const failed = results.filter((r) => !r.ok)

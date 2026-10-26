@@ -158,7 +158,8 @@ type DragState =
 
 
 
-const SPEEDS = [0.5, 1, 2]
+// 第一次点就变慢（找临界要的是慢放，不是快进）
+const SPEEDS = [1, 0.5, 0.25, 2]
 /**
  * 工具栏只剩「笔」和几种手势，没有组件按钮：
  * 画什么，什么就是组件（识别 + 物理性质），见 docs/DRAWING.md。
@@ -1893,8 +1894,30 @@ if (id) this.ensureBodyVisible(id)
       this.ui.text(tag, box.x + 10, box.y + 11.5, { size: 10, weight: 600, color: THEME.accent })
     }
 
-    // 右上角：分享 / 世界
+    // 右上角：倍率 / 分享 / 世界
     const right = st.x + st.w - 14
+    // 倍率：慢放是「暂停后自己找临界」的基本盘——判据翻转往往只在一两帧里
+    const speedLabel = this.speed + '×'
+    ctx.save()
+    ctx.font = font(10.5, 650)
+    const speedW = ctx.measureText(speedLabel).width + 18
+    ctx.restore()
+    const speedRect: Rect = { x: right - 76 - speedW, y: y + 4, w: speedW, h: 28 }
+    this.ui.pillButton(speedRect, speedLabel, {
+      size: 10.5,
+      weight: 650,
+      mono: true,
+      onClick: () => {
+        const i = SPEEDS.indexOf(this.speed)
+        this.speed = SPEEDS[(i + 1) % SPEEDS.length]!
+        this.toast('速度 ' + this.speed + '×')
+      },
+    })
+    this.ui.add({ id: 'ctl:speed', rect: speedRect, cursor: 'pointer', onClick: () => {
+      const i = SPEEDS.indexOf(this.speed)
+      this.speed = SPEEDS[(i + 1) % SPEEDS.length]!
+      this.toast('速度 ' + this.speed + '×')
+    } })
     this.ui.iconButton({ x: right - 34, y: y + 2, w: 34, h: 32 }, 'share', {
       onClick: () => this.share(),
     })

@@ -57,25 +57,33 @@ npm run build:mp
 | 字体 | 系统字体栈（PingFang SC / Microsoft YaHei 回退） |
 | 读取 AppID | CLI 打开项目时校验登录态下的真实 AppID；`touristappid` 会报「不存在此 AppID」 |
 
-## 5. 验证（`node scripts/mp-verify.mjs`，15 项）
+## 5. 验证（`node scripts/mp-verify.mjs`，16 项）
 
 ```
-PASS  页面启动  pages=1
-PASS  App 实例 + canvas  [390,844,3]
-PASS  安全区（状态栏 + 胶囊）  {"top":51,"right":100}
-PASS  预置场景步进  t=1.50 trail=90（用 fastForward 推进，避免 rAF 后台节流）
-PASS  判据（机械能守恒）  {"error":0.0037}
-PASS  题目假设（滑块 + 光滑圆弧）
-PASS  B 水平动量守恒
-PASS  触摸拖拽走逆投影  dx=0.236→0.236 dy=0.164→0.164（空白画布）
-PASS  分享串进 path（< 200 字符）  len=80
-PASS  临界搜索  v₀ ≈ 5.19 时翻转
+PASS  页面启动
+PASS  App 实例 + canvas
+PASS  安全区（状态栏 + 胶囊）
+PASS  预置场景步进
+PASS  判据（机械能守恒）
+PASS  水平动量守恒
+PASS  圆弧场景：光滑圆弧摩擦为 0
+PASS  分享串进 path（< 200 字符）
+PASS  触摸拖拽走逆投影
+PASS  首屏是题库（分类题目卡片可点）
+PASS  点题先进详情，不直接建模
+PASS  详情页点生成 → 小程序没有 AI，明确失败且不建模型
+PASS  AI 计划落库 → 进画布并写入本地建模库
+PASS  假设 chip 可点（滑块 → 小球）
+PASS  建模库卡片点开回到画布
 PASS  无运行时错误
 
-11/11 通过
+16/16 通过
 ```
 
-截图：`screenshots/mp-04-picker.png`、`mp-02-trough.png`、`mp-03-assumption.png`、`mp-08-search.png`。
+> 注意「点生成 → 明确失败」这一条：小程序端调不了 AI（域名白名单过不去），
+> 所以生成必须是**明确失败**而不是静默什么都不做。落库链路用 `app.applyPlan()` 单独测，不碰网络。
+
+截图：`screenshots/mp-02-trough.png`、`mp-03-assumption.png`、`mp-09-generated.png`、`mp-10-library.png`。
 
 ## 6. 踩过的坑
 

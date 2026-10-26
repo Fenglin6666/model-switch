@@ -66,7 +66,7 @@ npm run typecheck
 npm run doc:check    # 文档行数与代码一致
 npm run validate     # 三项技术验证（摩擦覆写 / 洛伦兹漂移 / Canvas 性能）
 npm run build        # Web 产物：约 483 KB / gzip 135 KB
-npm run build:mp     # 小程序包：约 473 KB → apps/miniprogram/miniprogram/utils/app.js
+npm run build:mp     # 小程序包：约 474 KB → apps/miniprogram/miniprogram/utils/app.js
 ```
 
 需要 Node ≥ 20。实测环境：Node 24 / Chrome / Windows。
