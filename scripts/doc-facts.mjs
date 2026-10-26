@@ -36,6 +36,7 @@ const FILES = [
   'packages/core/src/library.ts',
   'packages/core/src/components.ts',
   'packages/core/src/ports.ts',
+  'packages/core/src/body-fields.ts',
   'packages/core/src/validate.ts',
   'packages/core/src/params.ts',
   'packages/core/src/criterion.ts',

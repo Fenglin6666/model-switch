@@ -34,6 +34,7 @@ import { decodeShare, encodeShare } from '@core/serialize'
 import { parseProblem } from '@core/problem'
 import { sceneFromPlan } from '@core/ai-plan'
 import { anchorLocal } from '@core/ports'
+import { bodyFieldByKey, bodyFieldRows } from '@core/body-fields'
 import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, type AiConfig } from '@core/ai-client'
 import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
@@ -1779,9 +1780,10 @@ if (id) this.ensureBodyVisible(id)
       const nForces = body?.forces?.length ?? 0
       const arcTerrain = !!body && (body.shape.type === 'circle' || body.shape.type === 'arc') && (body.role ?? 'terrain') === 'terrain'
       const geometry = !!body && (body.shape.type === 'circle' || body.shape.type === 'arc' || body.shape.type === 'polyline' || body.shape.type === 'polygon' || (body.id === 'loop' && this.doc.params.R !== undefined) || (body.id === 'board' && this.doc.params.l !== undefined) || (body.id === 'platform' && this.doc.params.h !== undefined))
-      h = isStatic ? 162 : 242 + (nForces ? 28 : 0) + (this.selectedForceId ? 58 : 0)
+      // 参数区的行数由属性表决定，不再手写高度——加一个属性不用改这里
+      const fieldRows = body ? Math.ceil(bodyFieldRows(this.doc, body).length / 2) : 0
+      h = (isStatic ? 162 : 242) - 54 - (this.doc.world.interactions?.coulomb ? 54 : 0) + fieldRows * 54 + (nForces ? 28 : 0) + (this.selectedForceId ? 58 : 0)
       if (geometry) h += 68
-      if (this.doc.world.interactions?.coulomb) h += 54
       if (arcTerrain) h += 32
     } else if (this.showWorld) {
       const hasE = this.doc.params.E !== undefined && this.doc.fields.some((f) => f.kind === 'uniform' && f.type === 'E')
@@ -2718,67 +2720,36 @@ if (id) this.ensureBodyVisible(id)
 
     const half = (r.w - pad * 2 - 10) / 2
     let y = r.y + 60
-    const deg = (body.transform.angle * 180) / Math.PI
-    this.ui.slider(
-      { x: r.x + pad, y, w: half, h: 40 },
-      {
-        id: 'body-angle',
-        label: '角度',
-        value: deg,
-        min: -180,
-        max: 180,
-        step: 0.5,
-        decimals: 1,
-        unit: '°',
+    // 参数区由属性表驱动（core/body-fields.ts）：加一个属性 = 往表里加一行，
+    // 不用再改这里的 UI，也不用去改 sheetHeight() 的高度算式。
+    const fields = bodyFieldRows(this.doc, body)
+    fields.forEach((f, i) => {
+      const rect: Rect = { x: r.x + pad + (i % 2) * (half + 10), y: y + Math.floor(i / 2) * 54, w: half, h: 40 }
+      this.ui.slider(rect, {
+        id: `body-${f.key}`,
+        label: f.label,
+        value: f.read(body, this.doc),
+        min: f.min,
+        max: f.max,
+        step: f.step,
+        decimals: f.decimals,
+        unit: f.unit,
         onScrubStart: () => {
           this.playing = false
           this.pushHistory()
         },
         onScrubEnd: () => {},
-        onChange: (v) => this.setBodyAngle(body.id, v),
-      },
-    )
-    const mu = body.friction ?? findMaterial(this.doc, body.material)?.mu ?? 0.3
-    this.ui.slider(
-      { x: r.x + pad + half + 10, y, w: half, h: 40 },
-      {
-        id: 'body-mu',
-        label: '摩擦 μ',
-        value: mu,
-        min: 0,
-        max: 1,
-        step: 0.05,
-        decimals: 2,
-        onScrubStart: () => {
-          this.playing = false
-          this.pushHistory()
+        onChange: (v) => {
+          if (f.setter === 'angle') this.setBodyAngle(body.id, v)
+          else if (f.setter === 'mass') this.setBodyMass(body.id, v)
+          else if (f.setter === 'friction') this.setBodyFriction(body.id, v)
+          else if (f.setter === 'charge') this.setBodyCharge(body.id, v)
+          else this.setBodyField(body.id, f.key, v)
         },
-        onScrubEnd: () => {},
-        onChange: (v) => this.setBodyFriction(body.id, v),
-      },
-    )
-    y += 54
-    if (this.doc.world.interactions?.coulomb) {
-      this.ui.slider(
-        { x: r.x + pad, y, w: r.w - pad * 2, h: 40 },
-        {
-          id: 'body-charge',
-          label: '电荷 q',
-          value: body.charge ?? 0,
-          min: -5,
-          max: 5,
-          step: 0.1,
-          decimals: 1,
-          onScrubStart: () => {
-            this.playing = false
-            this.pushHistory()
-          },
-          onScrubEnd: () => {},
-          onChange: (v) => this.setBodyCharge(body.id, v),
-        },
-      )
-      y += 54
-    }
+      })
+    })
+    y += Math.ceil(fields.length / 2) * 54
+
 
     const geometry =
       body.shape.type === 'circle' || body.shape.type === 'arc'
@@ -2881,27 +2852,8 @@ if (id) this.ensureBodyVisible(id)
         mono: true,
       })
       y += 14
-      // 质量 + 添加外力
+      // 质量已经由属性表渲染（core/body-fields.ts），这里只留「添加外力」
       const halfW = (r.w - pad * 2 - 10) / 2
-      this.ui.slider(
-        { x: r.x + pad, y, w: halfW, h: 40 },
-        {
-          id: 'body-mass',
-          label: '质量',
-          value: body.mass ?? 0.2,
-          min: 0.05,
-          max: 5,
-          step: 0.05,
-          decimals: 2,
-          unit: ' kg',
-          onScrubStart: () => {
-            this.playing = false
-            this.pushHistory()
-          },
-          onScrubEnd: () => {},
-          onChange: (v) => this.setBodyMass(body.id, v),
-        },
-      )
       this.ui.pillButton({ x: r.x + pad + halfW + 10, y: y + 8, w: halfW, h: 30 }, '＋ 添加外力', {
         onClick: () => this.addBodyForce(body.id),
         size: 10,
@@ -3259,8 +3211,19 @@ presetById(this.presetId)?.layout?.(this.doc)
     this.rebuild()
   }
 
-  private setBodyFriction(id: string, mu: number): void {
-    this.doc = {
+  /**
+   * 泛型 setter：属性表里没有专用 setter 的字段（阻尼、角速度）走这里。
+   * 必须 `recordBodyEdit` —— 否则改完下次 `layout()` 就被冲掉了（edits 是覆盖层）。
+   */
+  private setBodyField(id: string, key: string, value: number): void {
+    const f = bodyFieldByKey(key)
+    if (!f) return
+    this.doc = { ...this.doc, bodies: this.doc.bodies.map((b) => (b.id === id ? f.write(b, value) : b)) }
+    recordBodyEdit(this.doc, id, { [key]: value } as Parameters<typeof recordBodyEdit>[2])
+    this.rebuild()
+  }
+
+  private setBodyFriction(id: string, mu: number): void {    this.doc = {
       ...this.doc,
       bodies: this.doc.bodies.map((b) => (b.id === id ? { ...b, friction: mu } : b)),
     }

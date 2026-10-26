@@ -49,6 +49,10 @@ export type BodyEdit = {
   role?: 'terrain' | 'object' | 'track'
   forces?: ForceDef[]
   charge?: number
+  /** 线性阻尼（气缸活塞这类「缓慢过程」） */
+  linearDamping?: number
+  /** 初始角速度（刚体） */
+  omega?: number
 }
 
 export type ConstraintEdit = { length?: number; k?: number; l0?: number; damping?: number; radius?: number }
@@ -459,6 +463,9 @@ export function applyEdits(scene: Scene): Scene {
       if (e.friction !== undefined) b.friction = e.friction
       if (e.velocity !== undefined) b.velocity = { ...e.velocity }
       if (e.mass !== undefined) b.mass = e.mass
+      if (e.charge !== undefined) b.charge = e.charge
+      if (e.linearDamping !== undefined) b.linearDamping = e.linearDamping
+      if (e.omega !== undefined) b.omega = e.omega
       if (e.kind !== undefined) b.kind = e.kind
       if (e.role !== undefined) b.role = e.role
       if (e.radius !== undefined && (b.shape.type === 'arc' || b.shape.type === 'circle')) b.shape.r = e.radius

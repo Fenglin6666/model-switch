@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 4142 |
+| `packages/ui/src/app.ts` | 4105 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 365 |
@@ -28,7 +28,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/ui/src/icons.ts` | 407 |
 | `packages/ui/src/chart.ts` | 194 |
 | `packages/core/src/presets.ts` | 1525 |
-| `packages/core/src/scene.ts` | 510 |
+| `packages/core/src/scene.ts` | 517 |
 | `packages/core/src/problem.ts` | 279 |
 | `packages/core/src/ai-plan.ts` | 758 |
 | `packages/core/src/ai-client.ts` | 116 |
@@ -37,6 +37,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/core/src/library.ts` | 246 |
 | `packages/core/src/components.ts` | 212 |
 | `packages/core/src/ports.ts` | 166 |
+| `packages/core/src/body-fields.ts` | 165 |
 | `packages/core/src/validate.ts` | 315 |
 | `packages/core/src/params.ts` | 72 |
 | `packages/core/src/criterion.ts` | 297 |
@@ -116,7 +117,8 @@ D:\Slogan
 ├─ docs/
 │  ├─ CODEMAP.md                本文件（行数自动校验）
 │  ├─ PHYSICS.md                物理正确性：断言、实测数字、边界
-│  ├─ AI.md                     AI 建模：三种模式、转发层、key 安全、局限
+│  ├─ AI.md                     AI 建模：四种模式、转发层、key 安全、局限
+│  ├─ AGENT.md                  agent 能力面：手 / 眼 / 尺，T1-T3，权限分层
 │  ├─ DRAWING.md                画布：识别 / 场 / 视觉语法 / 批注
 │  ├─ COMPONENTS.md             组件：从使用中沉淀
 │  ├─ DECISIONS.md              关键取舍、被推翻的结论、已废弃的方案
@@ -135,6 +137,7 @@ D:\Slogan
 │  │  ├─ library.ts             建模库：文件夹 / 模型 / 我的题目 / 组件 + 持久化
 │  │  ├─ components.ts          选中集 → 组件（抽取 / 插入 / id 重映射）
 │  │  ├─ ports.ts               端口：约束连「接点」而不是裸坐标
+│  │  ├─ body-fields.ts         属性表：面板显示什么 / 范围 / 何时显示
 │  │  ├─ validate.ts            结构校验：自由度 / 欠过约束 / 悬空引用
 │  │  ├─ params.ts              场景参数的可调区间（左侧滑杆的数据源）
 │  │  ├─ assumptions.ts         假设 → 可点 chip（只写 params）
@@ -198,6 +201,7 @@ D:\Slogan
 | 改建模库 | `core/library.ts` + `ui/pages/library.ts` |
 | 改组件抽取 / 插入 | `core/components.ts` + `ui/app.ts` 的 `saveComponent` / `insertSavedComponent` |
 | 加一种端口 / 改派生规则 | `core/ports.ts` 的 `derivedPorts` |
+| **给物体加一个可调属性** | `core/body-fields.ts` 的 `BODY_FIELDS` 加一行（面板和高度都自动跟上） |
 | 加一条结构检查 | `core/validate.ts` 的 `analyzeScene` |
 | 改 agent 的搭建指令集 | `core/ai-plan.ts` 的 `BuildOp` + `sceneFromOps` |
 | 加小程序能力 | `apps/miniprogram/miniprogram/pages/index/index.js` |

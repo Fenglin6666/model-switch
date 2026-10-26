@@ -79,7 +79,7 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 ## 5. 验证
 
 ```bash
-npm test                      214 passed
+npm test                      226 passed
 npm run typecheck             通过
 npm run doc:check             28 个文件一致
 node scripts/shots-editor.mjs 3/3    # 编辑器截图（README 的 240/241）+ 8 工具 + 「存为组件」入口
@@ -88,8 +88,8 @@ node scripts/shots-ink.mjs    9/9    # 批注
 node scripts/shots-bank.mjs   19/19  # 三栏 / 详情 / 生成 / 暂不支持 / 清空 / 持久化 / 手机尺寸 / 改名迁移 / AI 设置与回退
 LLM_KEY=xxx node scripts/ai-check.mjs   # 打真实接口：6 道题看 AI 怎么决定（需 dev server）
 node scripts/mp-verify.mjs    15/15  # 小程序（需 9420 端口）
-npm run build                 487 KB / gzip 136 KB
-npm run build:mp              477 KB
+npm run build                 488 KB / gzip 137 KB
+npm run build:mp              478 KB
 ```
 
 **跑验收的两个注意事项**：
@@ -101,6 +101,19 @@ npm run build:mp              477 KB
 
 ## 6. 下一步（建议顺序）
 
+> 完整的能力面分析在 [docs/AGENT.md](docs/AGENT.md)。那里的结论是：
+> **agent 不缺更聪明的模型，缺的是手（op 层）、眼（回读）、尺（校验）**——尺已经有了。
+
+### ✅ 属性表 + 面板表驱动（已完成 2026-10-26）
+
+检查器面板是**写死的**（`renderBodySheet` 353 行、12 根滑杆）。后果很直接：
+AI 用 build 搭出来的场景，界面上没有对应的滑杆——**agent 造什么都调不了**。
+
+做法：先列一张属性表（key / 标签 / 范围 / 单位 / 必需性 / 适用 kind），面板按表渲染。
+判据：**21 年 4462 道真题里没出现过的属性，就不进表**（属性集是封闭的，见 [DECISIONS.md](docs/DECISIONS.md) §2.10）。
+
+顺手能削掉 `renderBodySheet` 大半，也是拆 `sheets`（~800 行）的入口。
+
 ### P0：找老师试（非代码，最高优先）
 
 打开 `npm run dev` → 题库点一道题 → 生成 → 改参数 → 存进文件夹 → 存一个常用组件，**全程计时**。
@@ -108,7 +121,26 @@ npm run build:mp              477 KB
 
 判断标准：**如果老师根本不回访建模库，说明「收藏夹」是伪需求，下一版砍掉。**
 
-### P0：生成质量与「初稿」表达
+### P1：组件参数槽（让自举成立）
+
+`SavedComponent` 现在是**冻结快照**（没有参数）。agent 造了「v=2 的传送带」，下一道题是 v=3 就得重造，
+结果是「每个实例一个组件」，40 个上限瞬间爆掉。
+
+加 `paramSlots: [{key, label, unit, min, max, path}]`，插入时按路径写值。
+**不需要 `layout()`**——只有"参数改几何"才需要，而绝大多数参数是数值行为。
+参数改几何的那类，别沉淀，让 agent 每次重造。
+
+### P1：判据 → 动作
+
+判据现在只检测不动作，所以"绳断了球飞出去"表达不了。给判据加一个数据化的动作列表：
+
+```ts
+{ kind:'detach', bodyId:'ball', then:[{ op:'removeConstraint', id:'rope' }] }
+```
+
+`op` 的集合正好是那 12 个工具——**一份定义两处用**。
+
+### P1：生成质量与「初稿」表达
 
 `parseProblem` 是规则链路 v0（关键词 + 数字），不是大模型。需要把「猜的」显式标出来：
 哪些参数是题目给的、哪些用了默认值。现在只有 `meta.assumptions` 字符串。
@@ -166,7 +198,8 @@ npm run build:mp              477 KB
 | [README.md](README.md) | 产品是什么、怎么跑、能力、边界 |
 | [docs/CODEMAP.md](docs/CODEMAP.md) | Scene 数据模型、文件地图、常见改动从哪下手 |
 | [docs/PHYSICS.md](docs/PHYSICS.md) | 物理断言、实测数字、能建/不能建的边界 |
-| [docs/AI.md](docs/AI.md) | AI 建模：三种模式、转发层、key 安全、已知局限 |
+| [docs/AI.md](docs/AI.md) | AI 建模：四种模式、转发层、key 安全、已知局限 |
+| [docs/AGENT.md](docs/AGENT.md) | agent 能力面：手（op 层）/ 眼（回读）/ 尺（校验），T1-T3 判定，权限分层 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 关键取舍、被推翻的结论、已废弃的方案 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | 真题分布 / 开源生态 / 竞品 / 定位（含可信度标注） |
 | [docs/DRAWING.md](docs/DRAWING.md) | 画布：识别阈值、场笔手势、视觉语法、批注 |
@@ -185,7 +218,7 @@ npm run build:mp              477 KB
   按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
 - 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。
 - AI：用户页填 API key（只存本机），生成改由模型决定用哪个场景/怎么拼阶段；没 key 或请求失败自动回退规则解析。
-214 个测试；小程序包 477 KB。AI 建模（自带 key，失败回退规则解析）已接。
+226 个测试；小程序包 478 KB。AI 建模（自带 key，失败回退规则解析）已接。
 app.ts 已从 4772 行拆到 3923：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），
 剩余拆分计划见 docs/REFACTOR-PLAN.md。
 明确否掉的：条件表单、空白画布、首页示例卡片墙、预置组件库、形状调色板、A/B 对照、找临界——别加回来。

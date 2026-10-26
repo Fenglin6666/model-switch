@@ -65,8 +65,8 @@ npm test             # 145 个单测，7 秒
 npm run typecheck
 npm run doc:check    # 文档行数与代码一致
 npm run validate     # 三项技术验证（摩擦覆写 / 洛伦兹漂移 / Canvas 性能）
-npm run build        # Web 产物：约 487 KB / gzip 136 KB
-npm run build:mp     # 小程序包：约 477 KB → apps/miniprogram/miniprogram/utils/app.js
+npm run build        # Web 产物：约 488 KB / gzip 137 KB
+npm run build:mp     # 小程序包：约 478 KB → apps/miniprogram/miniprogram/utils/app.js
 ```
 
 需要 Node ≥ 20。实测环境：Node 24 / Chrome / Windows。
@@ -321,6 +321,7 @@ Web 和小程序共用同一份 `@ui/app`，只换宿主。安全区由宿主通
 | [docs/CODEMAP.md](docs/CODEMAP.md) | 想改代码，先看这个（含 Scene 数据模型、文件地图、常见改动从哪下手） |
 | [docs/PHYSICS.md](docs/PHYSICS.md) | 怀疑数字不对，或想知道哪些题建不了 |
 | [docs/AI.md](docs/AI.md) | 想接 AI 建模 / 改提示词 / 上线转发层 |
+| [docs/AGENT.md](docs/AGENT.md) | 想知道 agent 该有什么能力（手 / 眼 / 尺），以及为什么不给它任意代码 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 想知道「为什么这么做」，以及哪些当初的判断被推翻了 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | 想知道「该做什么」的依据（真题分布 / 开源 / 竞品 / 定位） |
 | [docs/DRAWING.md](docs/DRAWING.md) | 改画布、识别、视觉语法、批注 |
