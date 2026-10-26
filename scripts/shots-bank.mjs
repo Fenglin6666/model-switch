@@ -133,7 +133,7 @@ await tap('problem:open')
 const reopened = await state()
 check('点「打开模型」回到画布，不新增', reopened.mode === 'scene' && reopened.models === 1, JSON.stringify(reopened))
 
-// 5. 暂不支持的题：详情页只说明，没有生成按钮
+// 5. 以前标「暂不支持」的题：**照样能点生成**（标注只是提示，不是闸门）
 // 先切到「热学」分类，让这张卡在第一屏（列表可滚动，看不见的卡没有命中区）
 await page.evaluate(() => {
   const a = window.app
@@ -147,14 +147,14 @@ const blocked = await page.evaluate(() => {
   const a = window.app
   return {
     open: a.problemOpen,
-    hasUnsupported: a.ui.hits.some((h) => h.id === 'problem:unsupported'),
     hasGenerate: a.ui.hits.some((h) => h.id === 'problem:generate'),
+    hasManual: a.ui.hits.some((h) => h.id === 'problem:manual'),
     models: a.library.models.length,
   }
 })
 check(
-  '暂不支持的题：详情只说不能建，没有生成按钮',
-  blocked.open === 'g-2024-jj-13' && blocked.hasUnsupported && !blocked.hasGenerate,
+  '以前标「暂不支持」的题也能点生成（静态标注不拦人）',
+  blocked.open === 'g-2024-jj-13' && blocked.hasGenerate && blocked.hasManual,
   JSON.stringify(blocked),
 )
 await shot('223-problem-unsupported')

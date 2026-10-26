@@ -18,7 +18,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/ui/src/app.ts` | 4087 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
-| `packages/ui/src/pages/bank.ts` | 366 |
+| `packages/ui/src/pages/bank.ts` | 381 |
 | `packages/ui/src/pages/library.ts` | 275 |
 | `packages/ui/src/pages/user.ts` | 178 |
 | `packages/ui/src/pages/host.ts` | 60 |

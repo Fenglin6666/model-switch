@@ -54,7 +54,7 @@ export function renderBank(h: PagesHost): void {
   h.ui.text('题库', bar.x, bar.y + 36, { size: narrow ? 22 : 26, weight: 600, serif: true })
   const stats = bankStats(BANK_PROBLEMS)
   if (!narrow) {
-    h.ui.text(`内置 ${stats.total} 道 · 其中 ${stats.buildable} 道能直接生成建模`, bar.x + 62, bar.y + 36, {
+    h.ui.text(`内置 ${stats.total} 道 · 都能让 AI 试一次`, bar.x + 62, bar.y + 36, {
       size: 10,
       color: THEME.inkFaint,
     })
@@ -165,8 +165,10 @@ export function renderProblemCard(h: PagesHost, r: Rect, p: BankProblem): void {
   const pad = 14
   const right = r.x + r.w - 12
   // 状态
-  const status = p.expect.kind === 'model' ? (built ? '已建' : '可建模') : '暂不支持'
-  const statusColor = p.expect.kind === 'model' ? (built ? THEME.green : THEME.accent) : THEME.inkFaint
+  // 只有「已建 / 未建」。以前这里写「可建模 / 暂不支持」，但那是规则解析时代的标注，
+  // 现在生成由 AI 决定——标注会拦人（用户配了 key 却点不了），而且早就过时了。
+  const status = built ? '已建' : '未建'
+  const statusColor = built ? THEME.green : THEME.inkFaint
   const sw = h.ui.chip(right - 46, r.y + 20, status, statusColor)
   void sw
   h.ui.text(p.title, r.x + pad, r.y + 22, {
@@ -266,8 +268,10 @@ export function renderProblemDetail(h: PagesHost): void {
     tracking: 1.2,
   })
 
-  const status = unsupported ? '暂不支持' : built ? '已建' : '可建模'
-  const statusColor = unsupported ? THEME.inkFaint : built ? THEME.green : THEME.accent
+  // 详情页顶部也只显示「已建 / 未建」。以前这里写「暂不支持」，
+  // 但按钮明明能点生成——chip 和按钮互相矛盾，用户只会困惑。
+  const status = built ? '已建' : '未建'
+  const statusColor = built ? THEME.green : THEME.inkFaint
   ctx.save()
   ctx.font = font(10, 600)
   const statusW = ctx.measureText(status).width + 14
@@ -335,30 +339,41 @@ export function renderProblemDetail(h: PagesHost): void {
       },
     })
   } else {
+    // 标注只当提示，**不当闸门**：以前规则解析建不了，不代表 AI 建不了。
+    // 用户配了 key 就该让他试——试了才知道，AI 自己会说建不了。
     h.ui.text(
-      unsupported ? '自动建模没覆盖这类题，但可以手动搭' : built ? '已经建过这道题' : '生成后可以直接拖、改参数',
+      unsupported
+        ? '这类题以前规则解析没覆盖，AI 也许能建——试了才知道'
+        : built
+          ? '已经建过这道题'
+          : '生成后可以直接拖、改参数',
       r.x + pad,
       footY + 18,
-      { size: 10, color: THEME.inkSoft, maxWidth: r.w - pad * 2 - 130 },
+      { size: 10, color: THEME.inkSoft, maxWidth: r.w - pad * 2 - 170 },
     )
   }
 
-  const btnW = unsupported ? 108 : 120
+  // 主按钮永远是「生成」；「手动搭」是并列的次要入口（兜底不该被藏起来）
+  const manualW = 76
+  const manual: Rect = { x: r.x + pad, y: footY, w: manualW, h: 36 }
+  h.ui.pillButton(manual, '手动搭', {
+    size: 10.5,
+    weight: 600,
+    onClick: () => h.loadBlank(),
+  })
+  h.ui.add({ id: 'problem:manual', rect: manual, cursor: 'pointer', onClick: () => h.loadBlank() })
+
+  const btnW = 120
   const btn: Rect = { x: r.x + r.w - pad - btnW, y: footY, w: btnW, h: 36 }
-  // 自动建模建不了 → 落到编辑器（这是唯一的兜底，不再有第二套生成器）
-  const action = unsupported
-    ? () => h.loadBlank()
-    : built
-      ? () => h.openModel(built.id)
-      : () => h.generateAny(p.text, p.id)
-  h.ui.pillButton(btn, unsupported ? '手动搭 →' : built ? '打开模型 →' : '生成建模 →', {
+  const action = built ? () => h.openModel(built.id) : () => h.generateAny(p.text, p.id)
+  h.ui.pillButton(btn, built ? '打开模型 →' : '生成建模 →', {
     active: true,
     size: 11.5,
-    weight: unsupported ? 600 : 650,
+    weight: 650,
     onClick: action,
   })
   h.ui.add({
-    id: unsupported ? 'problem:unsupported' : built ? 'problem:open' : 'problem:generate',
+    id: built ? 'problem:open' : 'problem:generate',
     rect: btn,
     cursor: 'pointer',
     onClick: action,
