@@ -46,6 +46,63 @@ export function pickContent(json: unknown): string {
   return ''
 }
 
+/** 把厂商/网络错误翻译成一句能行动的话（401 这种光说「身份验证失败」没法排查） */
+export function explainAiError(status: number, raw: string): string {
+  let code = ''
+  let msg = raw.slice(0, 200)
+  try {
+    const j = JSON.parse(raw) as { error?: { message?: string; code?: string } }
+    if (j.error?.message) msg = j.error.message
+    if (j.error?.code) code = j.error.code
+  } catch {
+    /* 不是 JSON 就用原文 */
+  }
+  if (status === 401 || status === 403 || code === '1000') {
+    return (
+      `Key 无效或已过期（HTTP ${status}）。去「AI 建模」重新粘贴一次——` +
+      '要用 Coding Plan 的 key；普通 API key 打在 coding 端点上会被拒。'
+    )
+  }
+  if (status === 404) return `端点不对（HTTP 404）：${msg}。检查端点是不是 /llm/chat/completions，以及 dev server 有没有起`
+  if (status === 429) return `请求太频繁或额度用尽（HTTP 429）：${msg}`
+  if (code === '1113') return `额度不足：${msg}`
+  return `接口返回 ${status}：${msg}`
+}
+
+/**
+ * 自检：拿当前配置发一次最小请求，把问题定位到「key / 端点 / 模型 / 额度 / 网络」中的一项。
+ * 401 这种错误光看 toast 排查不了，得有个能点的地方。
+ */
+export async function probeAi(cfg: AiConfig, timeoutMs = 20000): Promise<{ ok: boolean; ms: number; message: string }> {
+  const t0 = Date.now()
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(cfg.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [{ role: 'user', content: '只回复：ok' }],
+        max_tokens: 64,
+        stream: false,
+        thinking: { type: 'disabled' },
+      }),
+      signal: ctrl.signal,
+    })
+    const text = await res.text()
+    const ms = Date.now() - t0
+    if (!res.ok) return { ok: false, ms, message: explainAiError(res.status, text) }
+    return { ok: true, ms, message: `通了（${ms}ms · ${cfg.model}）` }
+  } catch (e) {
+    const ms = Date.now() - t0
+    const aborted = (e as { name?: string })?.name === 'AbortError'
+    return { ok: false, ms, message: aborted ? '超时：请求没回来，检查网络或端点' : `网络错误：${String(e).slice(0, 120)}` }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function askPlan(
   cfg: AiConfig,
   problemText: string,
@@ -83,15 +140,7 @@ export async function askPlan(
     const ms = Date.now() - t0
     const text = await res.text()
     if (!res.ok) {
-      // 厂商错误格式：{"error":{"code":"1113","message":"余额不足…"}}
-      let msg = text.slice(0, 160)
-      try {
-        const j = JSON.parse(text) as { error?: { message?: string; code?: string } }
-        if (j.error?.message) msg = j.error.code ? `${j.error.message}（${j.error.code}）` : j.error.message
-      } catch {
-        /* 不是 JSON 就用原文 */
-      }
-      return { ok: false, error: `接口返回 ${res.status}：${msg}`, ms }
+      return { ok: false, error: explainAiError(res.status, text), ms }
     }
 
     let json: unknown

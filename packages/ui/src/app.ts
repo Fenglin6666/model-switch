@@ -34,7 +34,7 @@ import { decodeShare, encodeShare } from '@core/serialize'
 import { sceneFromPlan, type AiPlan, type ParseResult } from '@core/ai-plan'
 import { anchorLocal } from '@core/ports'
 import { bodyFieldByKey, bodyFieldRows } from '@core/body-fields'
-import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, type AiConfig } from '@core/ai-client'
+import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, probeAi, type AiConfig } from '@core/ai-client'
 import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
 import { BANK_PROBLEMS, bankCategoryName, bankStats, makeMineProblem, visibleCategories, type BankProblem } from '@core/bank'
@@ -271,6 +271,9 @@ export class App {
   private aiOpen = false
   /** 正在等 AI 返回（防重复点） */
   private aiBusy = false
+  /** 自检结果（点「测一下」才有） */
+  private aiProbe: { ok: boolean; message: string } | null = null
+  private aiProbing = false
 
   constructor(opts: AppOptions) {
     this.ctx = opts.ctx
@@ -3852,6 +3855,24 @@ const focus = this.focusBody(this.doc)
     )
   }
 
+  private editAiEndpoint(): void {
+    this.host.prompt?.(
+      {
+        title: '接口端点',
+        placeholder: DEFAULT_AI_CONFIG.endpoint,
+        value: this.aiConfig?.endpoint ?? DEFAULT_AI_CONFIG.endpoint,
+      },
+      (v) => {
+        if (v === null) return
+        const endpoint = v.trim()
+        if (!endpoint) return
+        this.aiConfig = { key: this.aiConfig?.key ?? '', ...DEFAULT_AI_CONFIG, ...this.aiConfig, endpoint }
+        this.persistAi()
+        this.toast('端点已更新')
+      },
+    )
+  }
+
   private clearAi(): void {
     this.aiConfig = null
     this.persistAi()
@@ -3876,8 +3897,8 @@ const focus = this.focusBody(this.doc)
     ctx.restore()
     this.ui.add({ id: 'ai:backdrop', rect: { x: 0, y: 0, w: W, h: H }, onClick: () => (this.aiOpen = false) })
 
-    const w = Math.min(W - 40, 400)
-    const h = 300
+    const w = Math.min(W - 40, 420)
+    const h = 372
     const r: Rect = { x: (W - w) / 2, y: (H - h) / 2, w, h }
     this.ui.card(r, { radius: 16, fill: THEME.card, stroke: THEME.panelLine, shadow: true })
     this.ui.add({ id: 'ai:card', rect: r })
@@ -3887,21 +3908,80 @@ const focus = this.focusBody(this.doc)
       onClick: () => (this.aiOpen = false),
     })
 
+    // 三行：key / 模型 / 端点。端点也露出来——401 有一半是它不对。
+    const mask = (k: string) => (k.length > 12 ? k.slice(0, 6) + '…' + k.slice(-4) : '（太短，可能没粘全）')
     const rows: Array<{ label: string; value: string; onClick: () => void }> = [
-      { label: 'API Key', value: this.aiConfig?.key ? `${this.aiConfig.key.slice(0, 6)}…${this.aiConfig.key.slice(-4)}` : '未设置', onClick: () => this.editAiKey() },
+      {
+        label: 'API Key',
+        value: this.aiConfig?.key ? mask(this.aiConfig.key) : '未设置',
+        onClick: () => this.editAiKey(),
+      },
       { label: '模型', value: this.aiConfig?.model ?? DEFAULT_AI_CONFIG.model, onClick: () => this.editAiModel() },
+      {
+        label: '端点',
+        value: this.aiConfig?.endpoint ?? DEFAULT_AI_CONFIG.endpoint,
+        onClick: () => this.editAiEndpoint(),
+      },
     ]
     let y = r.y + 72
     for (const row of rows) {
       this.ui.text(row.label, r.x + 20, y + 14, { size: 10.5, weight: 600, color: THEME.inkSoft })
       this.ui.text(row.value, r.x + 90, y + 14, { size: 10.5, mono: true, maxWidth: r.w - 130 })
       const rr: Rect = { x: r.x + 12, y, w: r.w - 24, h: 34 }
-      this.ui.add({ id: `ai:${row.label}`, rect: rr, cursor: 'pointer', onClick: row.onClick })
+      this.ui.add({ id: 'ai:' + row.label, rect: rr, cursor: 'pointer', onClick: row.onClick })
       y += 38
     }
 
-    this.ui.text('Key 只存在这台设备上，不上传、不进仓库。', r.x + 20, y + 6, { size: 9, color: THEME.inkFaint })
-    this.ui.text('浏览器直连厂商接口会被跨域拦住，所以走本地转发（npm run dev 已配好）。', r.x + 20, y + 22, {
+    // 自检：401 光看 toast 排查不了，得有个能点的地方
+    const probeBtn: Rect = { x: r.x + 20, y: y + 8, w: 88, h: 30 }
+    this.ui.pillButton(probeBtn, this.aiProbing ? '测试中…' : '测一下', {
+      size: 10.5,
+      weight: 600,
+      onClick: () => {
+        if (this.aiProbing) return
+        if (!this.aiConfig?.key) {
+          this.aiProbe = { ok: false, message: '还没填 Key' }
+          return
+        }
+        this.aiProbing = true
+        this.aiProbe = null
+        void probeAi(this.aiConfig).then((res) => {
+          this.aiProbe = { ok: res.ok, message: res.message }
+          this.aiProbing = false
+        })
+      },
+    })
+    this.ui.add({
+      id: 'ai:probe',
+      rect: probeBtn,
+      cursor: 'pointer',
+      onClick: () => {
+        if (this.aiProbing || !this.aiConfig?.key) return
+        this.aiProbing = true
+        this.aiProbe = null
+        void probeAi(this.aiConfig).then((res) => {
+          this.aiProbe = { ok: res.ok, message: res.message }
+          this.aiProbing = false
+        })
+      },
+    })
+    if (this.aiProbe) {
+      this.ui.text(this.aiProbe.message, r.x + 118, y + 23, {
+        size: 9.5,
+        color: this.aiProbe.ok ? THEME.ok : THEME.red,
+        maxWidth: r.w - 140,
+      })
+    } else {
+      this.ui.text('发一次最小请求，确认 key / 端点 / 模型都对', r.x + 118, y + 23, {
+        size: 9,
+        color: THEME.inkFaint,
+        maxWidth: r.w - 140,
+      })
+    }
+    y += 48
+
+    this.ui.text('Key 只存在这台设备上，不上传、不进仓库。', r.x + 20, y + 4, { size: 9, color: THEME.inkFaint })
+    this.ui.text('浏览器直连厂商接口会被跨域拦住，所以走本地转发（npm run dev 已配好）。', r.x + 20, y + 20, {
       size: 9,
       color: THEME.inkFaint,
       maxWidth: r.w - 40,
@@ -3921,8 +4001,6 @@ const focus = this.focusBody(this.doc)
       onClick: () => (this.aiOpen = false),
     })
   }
-
-
   /** 打开库里某个模型 */
   openModel(id: string): void {
     const m = this.library.models.find((x) => x.id === id)

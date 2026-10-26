@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 4087 |
+| `packages/ui/src/app.ts` | 4165 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 381 |
@@ -30,7 +30,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/core/src/presets.ts` | 1525 |
 | `packages/core/src/scene.ts` | 517 |
 | `packages/core/src/ai-plan.ts` | 773 |
-| `packages/core/src/ai-client.ts` | 116 |
+| `packages/core/src/ai-client.ts` | 165 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
 | `packages/core/src/library.ts` | 246 |
