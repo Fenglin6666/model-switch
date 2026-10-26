@@ -80,7 +80,7 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 ## 5. 验证
 
 ```bash
-npm test                      217 passed
+npm test                      222 passed
 npm run typecheck             通过
 npm run doc:check             28 个文件一致
 node scripts/shots-editor.mjs 3/3    # 编辑器截图（README 的 240/241）+ 8 工具 + 「存为组件」入口
@@ -89,8 +89,8 @@ node scripts/shots-ink.mjs    9/9    # 批注
 node scripts/shots-bank.mjs   19/19  # 三栏 / 详情 / 生成 / 暂不支持 / 清空 / 持久化 / 手机尺寸 / 改名迁移 / AI 设置与回退
 LLM_KEY=xxx node scripts/ai-check.mjs   # 打真实接口：6 道题看 AI 怎么决定（需 dev server）
 node scripts/mp-verify.mjs    15/15  # 小程序（需 9420 端口）
-npm run build                 481 KB / gzip 134 KB
-npm run build:mp              472 KB
+npm run build                 483 KB / gzip 135 KB
+npm run build:mp              473 KB
 ```
 
 **跑验收的两个注意事项**：
@@ -219,7 +219,7 @@ AI 用 build 搭出来的场景，界面上没有对应的滑杆——**agent �
   按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
 - 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。
 - AI：用户页填 API key（只存本机），生成由模型决定用哪个场景/怎么拼阶段；没 key 或失败就明确提示，落到手动搭。
-217 个测试；小程序包 472 KB。生成只有 AI 一条路，建不了就手动搭。
+222 个测试；小程序包 473 KB。生成只有 AI 一条路，建不了就手动搭。
 app.ts 已从 4772 行拆到 3923：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），
 剩余拆分计划见 docs/REFACTOR-PLAN.md。
 明确否掉的：条件表单、首页示例卡片墙、预置组件库、形状调色板、A/B 对照、找临界、**离线规则解析**——别加回来。

@@ -81,9 +81,17 @@ warnings 带回去。**这是「agent 出招后自己验算」那一环**，也�
   详情页的「手动搭 →」就是为此加的。
 - 小程序端**彻底没有生成能力**（它本来就调不了 AI）。题库和建模库照常，画布照常能手动搭。
 
-## 3. 跨域：为什么必须有一个转发层
+## 3. 服务商与跨域：各家不一样，不能一刀切
 
-实测（2026-10-25）：浏览器直连 `open.bigmodel.cn` **会失败**。
+**跨域策略决定要不要转发层**，而各家不一样（都实测过）：
+
+| 服务商 | 端点 | 浏览器能直连吗 | 需要转发 |
+|---|---|---|---|
+| **智谱 GLM（Coding Plan）** | `/llm/chat/completions` → `open.bigmodel.cn/api/coding/paas/v4` | ❌ 预检不回 ACAO | ✅ |
+| **DeepSeek** | `https://api.deepseek.com/chat/completions` | ✅ 预检直接回 `allow-origin` + `allow-headers` | ❌ |
+| 自定义 | 用户自己填 | 取决于对方 | — |
+
+智谱的实测细节：
 
 ```
 OPTIONS /api/coding/paas/v4/chat/completions   → 200，但没有 Access-Control-Allow-Origin
@@ -91,14 +99,26 @@ POST    /api/coding/paas/v4/chat/completions   → 200，Access-Control-Allow-Or
 浏览器 fetch                                    → TypeError: Failed to fetch
 ```
 
-POST 的响应带 ACAO，但**预检响应不带**，所以浏览器在预检阶段就拦掉了。
+POST 的响应带 ACAO，但**预检响应不带**，所以浏览器在预检阶段就拦掉了。DeepSeek 则是预检就回全套头，
+所以它能直连——不需要代理，也就不需要部署任何后端。
 
-于是：默认端点是相对路径 `/llm/chat/completions`，由 `apps/web/vite.config.ts` 的 proxy 转发到
-`https://open.bigmodel.cn/api/coding/paas/v4`（`npm run dev` 已配好，开箱可用）。
+### 面板上「服务商」点一下就换
 
-**生产环境需要一个转发层**。它可以是任何能转发 POST 的东西（Cloudflare Worker / Vercel Function /
-Nginx），要求只有一条：**把 `Authorization` 原样透传**——服务端不存 key，也就不需要信任服务端。
-用户也可以在设置里把端点改成自己的代理完整 URL。
+换服务商 = 换端点 + 换默认模型（key 保留）。一家一家的 key 形态不同，所以还做了**错配检测**：
+
+- 智谱的 key 形如 `xxxx.yyyy`（中间一个点）
+- DeepSeek 的 key 形如 `sk-…`
+
+拿 DeepSeek 的 key 打智谱端点，服务端只会回「身份验证失败（401）」——这句话对用户零信息量。
+所以 401 时会先比形态：**「key 是「DeepSeek」的，端点是「智谱」· 换服务商」**。
+
+> 这个错配是真实发生过的：用户配了 DeepSeek 的 key，但默认端点是智谱的，于是一路 401。
+
+### 生产环境
+
+只有「需要转发」的服务商才需要部署一个转发层。它可以是任何能转发 POST 的东西
+（Cloudflare Worker / Vercel Function / Nginx），要求只有一条：**把 `Authorization` 原样透传**——
+服务端不存 key，也就不需要信任服务端。用户也可以把端点改成自己的代理完整 URL。
 
 > 小程序**不支持**：微信要求 request 域名提前在后台配置且要备案，不可能让用户自带。
 > 所以小程序端 `aiLabel()` 显示「当前壳不支持」，**完全没有生成能力**——题库、建模库照常，画布照常能手动搭。这与「小程序做分发端」的定位一致。

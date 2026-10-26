@@ -34,7 +34,15 @@ import { decodeShare, encodeShare } from '@core/serialize'
 import { sceneFromPlan, type AiPlan, type ParseResult } from '@core/ai-plan'
 import { anchorLocal } from '@core/ports'
 import { bodyFieldByKey, bodyFieldRows } from '@core/body-fields'
-import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, probeAi, type AiConfig } from '@core/ai-client'
+import {
+  DEFAULT_AI_CONFIG,
+  PROVIDERS,
+  aiConfigReady,
+  askPlan,
+  probeAi,
+  providerByEndpoint,
+  type AiConfig,
+} from '@core/ai-client'
 import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
 import { BANK_PROBLEMS, bankCategoryName, bankStats, makeMineProblem, visibleCategories, type BankProblem } from '@core/bank'
@@ -3855,6 +3863,21 @@ const focus = this.focusBody(this.doc)
     )
   }
 
+  /** 点一下换下一家：端点 + 模型跟着换，key 保留（换错家会 401，所以这个操作要一步到位） */
+  private cycleAiProvider(): void {
+    const cur = providerByEndpoint(this.aiConfig?.endpoint ?? DEFAULT_AI_CONFIG.endpoint)
+    const usable = PROVIDERS.filter((p) => p.id !== 'custom')
+    const i = usable.findIndex((p) => p.id === cur.id)
+    const next = usable[(i + 1) % usable.length]!
+    const model = next.models[0] ?? this.aiConfig?.model ?? DEFAULT_AI_CONFIG.model
+    this.aiConfig = { key: this.aiConfig?.key ?? '', endpoint: next.endpoint, model }
+    this.persistAi()
+    this.aiProbe = null
+    this.toast(
+      '服务商换成「' + next.label + '」· 模型 ' + model + (next.needsProxy ? ' · 需要 dev server 转发' : ' · 可直连'),
+    )
+  }
+
   private editAiEndpoint(): void {
     this.host.prompt?.(
       {
@@ -3898,7 +3921,7 @@ const focus = this.focusBody(this.doc)
     this.ui.add({ id: 'ai:backdrop', rect: { x: 0, y: 0, w: W, h: H }, onClick: () => (this.aiOpen = false) })
 
     const w = Math.min(W - 40, 420)
-    const h = 372
+    const h = 428
     const r: Rect = { x: (W - w) / 2, y: (H - h) / 2, w, h }
     this.ui.card(r, { radius: 16, fill: THEME.card, stroke: THEME.panelLine, shadow: true })
     this.ui.add({ id: 'ai:card', rect: r })
@@ -3911,6 +3934,11 @@ const focus = this.focusBody(this.doc)
     // 三行：key / 模型 / 端点。端点也露出来——401 有一半是它不对。
     const mask = (k: string) => (k.length > 12 ? k.slice(0, 6) + '…' + k.slice(-4) : '（太短，可能没粘全）')
     const rows: Array<{ label: string; value: string; onClick: () => void }> = [
+      {
+        label: '服务商',
+        value: providerByEndpoint(this.aiConfig?.endpoint ?? DEFAULT_AI_CONFIG.endpoint).label,
+        onClick: () => this.cycleAiProvider(),
+      },
       {
         label: 'API Key',
         value: this.aiConfig?.key ? mask(this.aiConfig.key) : '未设置',
@@ -3965,20 +3993,21 @@ const focus = this.focusBody(this.doc)
         })
       },
     })
+    // 结论放按钮下面一整行——和按钮挤一行会被截断
     if (this.aiProbe) {
-      this.ui.text(this.aiProbe.message, r.x + 118, y + 23, {
+      this.ui.text(this.aiProbe.message, r.x + 20, y + 50, {
         size: 9.5,
         color: this.aiProbe.ok ? THEME.ok : THEME.red,
-        maxWidth: r.w - 140,
+        maxWidth: r.w - 40,
       })
     } else {
-      this.ui.text('发一次最小请求，确认 key / 端点 / 模型都对', r.x + 118, y + 23, {
+      this.ui.text('发一次最小请求，确认服务商 / key / 模型都对得上', r.x + 20, y + 50, {
         size: 9,
         color: THEME.inkFaint,
-        maxWidth: r.w - 140,
+        maxWidth: r.w - 40,
       })
     }
-    y += 48
+    y += 66
 
     this.ui.text('Key 只存在这台设备上，不上传、不进仓库。', r.x + 20, y + 4, { size: 9, color: THEME.inkFaint })
     this.ui.text('浏览器直连厂商接口会被跨域拦住，所以走本地转发（npm run dev 已配好）。', r.x + 20, y + 20, {
