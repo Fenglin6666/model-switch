@@ -175,6 +175,7 @@ D:\Slogan
 │  ├─ shots-draw.mjs            画图 + 组件验收（25 项）
 │  ├─ shots-bank.mjs            题库/详情/建模库/用户页 + 改名迁移 + AI 回退（19 项）
 │  ├─ ai-check.mjs              打真实接口验 6 道题（需 LLM_KEY 环境变量）
+│  ├─ coverage.mjs              覆盖率分析：分母 / 天花板 / 边际收益（需真题 CSV）
 │  ├─ shots-ink.mjs             批注验收（9 项）
 │  └─ validate/                 三个前置技术验证（npm run validate）
 └─ screenshots/                 桌面端 + 小程序截图（编号越大越新）
