@@ -45,7 +45,9 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 | 领域 | 有 | 入口 |
 |---|---|---|
 | 题目 → 建模 | 有 key 走 AI（选场景 / 拼阶段 / 明确拒绝）；没 key 或失败回退 `parseProblem` 规则解析 v0 | 题库首页 / 「生成建模」贴题干 |
-| AI 建模 | BYO-key，存本机；三种 mode（preset / chain / unsupported）；失败自动回退规则解析 | 用户页 →「AI 建模」；`docs/AI.md` |
+| AI 建模 | BYO-key，存本机；四种 mode（preset / chain / build / unsupported）；失败自动回退规则解析 | 用户页 →「AI 建模」；`docs/AI.md` |
+| 端口 | 约束连「接点」而不是裸坐标：几何派生 center/top/四角 + 语义 axle/hook | `core/ports.ts` |
+| 结构校验 | 自由度分析、悬空引用、退化几何、过约束；agent 产出后自动验算 | `core/validate.ts` |
 | 题库 | 15 道（8 自编示例 + 7 真题），按 力学/电磁学/热学 分类，每条带真实可建状态 | 底部「题库」 |
 | 建模库 | 文件夹自建自分类、本地持久化、60 上限、离开画布写回同一条 | 底部「模型」 |
 | 用户页 | 本地数据统计、清空建模库/我的题目（都先确认） | 底部「用户」 |
@@ -77,7 +79,7 @@ npm run build:mp     # 小程序包 → apps/miniprogram/miniprogram/utils/app.j
 ## 5. 验证
 
 ```bash
-npm test                      176 passed
+npm test                      214 passed
 npm run typecheck             通过
 npm run doc:check             28 个文件一致
 node scripts/shots-editor.mjs 3/3    # 编辑器截图（README 的 240/241）+ 8 工具 + 「存为组件」入口
@@ -86,8 +88,8 @@ node scripts/shots-ink.mjs    9/9    # 批注
 node scripts/shots-bank.mjs   19/19  # 三栏 / 详情 / 生成 / 暂不支持 / 清空 / 持久化 / 手机尺寸 / 改名迁移 / AI 设置与回退
 LLM_KEY=xxx node scripts/ai-check.mjs   # 打真实接口：6 道题看 AI 怎么决定（需 dev server）
 node scripts/mp-verify.mjs    15/15  # 小程序（需 9420 端口）
-npm run build                 469 KB / gzip 130 KB
-npm run build:mp              459 KB
+npm run build                 487 KB / gzip 136 KB
+npm run build:mp              477 KB
 ```
 
 **跑验收的两个注意事项**：
@@ -183,7 +185,7 @@ npm run build:mp              459 KB
   按住拖一个矩形就在那块区域建场（点一下=全场）；选中可拖右下角手柄缩放。
 - 组件：选中一个物体 →「＋ 存为组件」，顺着约束把整段抓出来；「组件」面板插入到舞台中央，id 全部换新。
 - AI：用户页填 API key（只存本机），生成改由模型决定用哪个场景/怎么拼阶段；没 key 或请求失败自动回退规则解析。
-176 个测试；小程序包 459 KB。AI 建模（自带 key，失败回退规则解析）已接。
+214 个测试；小程序包 477 KB。AI 建模（自带 key，失败回退规则解析）已接。
 app.ts 已从 4772 行拆到 3923：页面在 ui/pages/，布局/画图逻辑是纯函数（有单测），
 剩余拆分计划见 docs/REFACTOR-PLAN.md。
 明确否掉的：条件表单、空白画布、首页示例卡片墙、预置组件库、形状调色板、A/B 对照、找临界——别加回来。

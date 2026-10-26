@@ -80,6 +80,11 @@ export type Body = {
   forces?: ForceDef[]
   /** 外力在多少秒后撤去（不填=一直在）。 */
   appliedUntil?: number
+  /**
+   * 语义端口（转轴 / 挂钩 / 销钉）。几何派生的 center/top/bottom/left/right/四角
+   * 不需要声明，见 `ports.ts`。约束可以按端口名连过来，不必算坐标。
+   */
+  ports?: import('./ports').Port[]
 }
 
 export type Material = {
@@ -213,7 +218,13 @@ export type Constraint =
   | { id: string; type: 'pin'; bodyId: string; point: Vec2 }
   | { id: string; type: 'motor'; bodyId: string; omega: number }
 
-export type Anchor = { bodyId: string; local: Vec2 } | { world: Vec2 }
+/**
+ * 约束的一端。三种写法，优先级从「说人话」到「说坐标」：
+ *   1. `{ bodyId, port }`  —— 命名端口（推荐，agent 和组件都用这个）
+ *   2. `{ bodyId, local }` —— 显式局部坐标（旧场景、手画时用）
+ *   3. `{ world }`         —— 固定在世界某点（相当于钉在地上）
+ */
+export type Anchor = { bodyId: string; port: string } | { bodyId: string; local: Vec2 } | { world: Vec2 }
 
 export type World = {
   gravity: number

@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 4139 |
+| `packages/ui/src/app.ts` | 4142 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 365 |
@@ -28,20 +28,22 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/ui/src/icons.ts` | 407 |
 | `packages/ui/src/chart.ts` | 194 |
 | `packages/core/src/presets.ts` | 1525 |
-| `packages/core/src/scene.ts` | 499 |
+| `packages/core/src/scene.ts` | 510 |
 | `packages/core/src/problem.ts` | 279 |
-| `packages/core/src/ai-plan.ts` | 389 |
+| `packages/core/src/ai-plan.ts` | 758 |
 | `packages/core/src/ai-client.ts` | 116 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
 | `packages/core/src/library.ts` | 246 |
 | `packages/core/src/components.ts` | 212 |
+| `packages/core/src/ports.ts` | 166 |
+| `packages/core/src/validate.ts` | 315 |
 | `packages/core/src/params.ts` | 72 |
 | `packages/core/src/criterion.ts` | 297 |
 | `packages/core/src/serialize.ts` | 251 |
-| `packages/render/src/renderer.ts` | 1244 |
+| `packages/render/src/renderer.ts` | 1247 |
 | `packages/render/src/camera.ts` | 253 |
-| `packages/physics/src/simulation.ts` | 841 |
+| `packages/physics/src/simulation.ts` | 895 |
 | `packages/physics/src/forces.ts` | 126 |
 | `apps/web/src/main.ts` | 285 |
 | `apps/miniprogram/miniprogram/pages/index/index.js` | 179 |
@@ -132,6 +134,8 @@ D:\Slogan
 │  │  ├─ bank.ts                题库：分类 + 15 道题 + 每条的 expect
 │  │  ├─ library.ts             建模库：文件夹 / 模型 / 我的题目 / 组件 + 持久化
 │  │  ├─ components.ts          选中集 → 组件（抽取 / 插入 / id 重映射）
+│  │  ├─ ports.ts               端口：约束连「接点」而不是裸坐标
+│  │  ├─ validate.ts            结构校验：自由度 / 欠过约束 / 悬空引用
 │  │  ├─ params.ts              场景参数的可调区间（左侧滑杆的数据源）
 │  │  ├─ assumptions.ts         假设 → 可点 chip（只写 params）
 │  │  ├─ criterion.ts           判据（detach/reach/escape/coincide/collide/conserve）
@@ -193,6 +197,9 @@ D:\Slogan
 | 改题库页 / 详情页 | `ui/pages/bank.ts` |
 | 改建模库 | `core/library.ts` + `ui/pages/library.ts` |
 | 改组件抽取 / 插入 | `core/components.ts` + `ui/app.ts` 的 `saveComponent` / `insertSavedComponent` |
+| 加一种端口 / 改派生规则 | `core/ports.ts` 的 `derivedPorts` |
+| 加一条结构检查 | `core/validate.ts` 的 `analyzeScene` |
+| 改 agent 的搭建指令集 | `core/ai-plan.ts` 的 `BuildOp` + `sceneFromOps` |
 | 加小程序能力 | `apps/miniprogram/miniprogram/pages/index/index.js` |
 | 改吸附规则 | `core/snap.ts` |
 | 双击分类 | `ui/app.ts` 的 `cycleClassification` / `classifyBody` |

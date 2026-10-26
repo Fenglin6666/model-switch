@@ -33,6 +33,7 @@ import { describeRecognized, recognizeStroke } from '@core/recognize'
 import { decodeShare, encodeShare } from '@core/serialize'
 import { parseProblem } from '@core/problem'
 import { sceneFromPlan } from '@core/ai-plan'
+import { anchorLocal } from '@core/ports'
 import { DEFAULT_AI_CONFIG, aiConfigReady, askPlan, type AiConfig } from '@core/ai-client'
 import { componentSelection, extractComponent, instantiateComponent, type SavedComponent } from '@core/components'
 import { sceneParams } from '@core/params'
@@ -3510,11 +3511,13 @@ const focus = this.focusBody(this.doc)
     if ('world' in a) return a.world
     const body = findBody(this.doc, a.bodyId)
     if (!body) return { x: 0, y: 0 }
+    const local = anchorLocal(this.doc, a)
+    if (!local) return { x: 0, y: 0 }
     const s = state?.bodies[a.bodyId]
     const t = s ? { x: s.x, y: s.y, angle: s.angle } : body.transform
     const c = Math.cos(t.angle)
     const sn = Math.sin(t.angle)
-    return { x: t.x + a.local.x * c - a.local.y * sn, y: t.y + a.local.x * sn + a.local.y * c }
+    return { x: t.x + local.x * c - local.y * sn, y: t.y + local.x * sn + local.y * c }
   }
 
   private pickConstraintAt(x: number, y: number): Constraint | null {

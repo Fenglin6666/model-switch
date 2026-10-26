@@ -6,6 +6,7 @@
  */
 import type { Anchor, Body, Guide, Region, Scene, Shape } from '@core/scene'
 import { renderGeometries, type Precision, type RenderGeometry } from '@core/shapes'
+import { anchorLocal } from '@core/ports'
 import type { Vec2 } from '@core/math'
 import { Camera } from './camera'
 import { THEME, font, rgba, shade } from './theme'
@@ -624,11 +625,13 @@ function anchorWorld(scene: Scene, state: VisualState | null, a: Anchor): Vec2 |
   if ('world' in a) return a.world
   const body = scene.bodies.find((b) => b.id === a.bodyId)
   if (!body) return null
+  const local = anchorLocal(scene, a)
+  if (!local) return null
   const s = state?.bodies[a.bodyId]
   const t = s ? { x: s.x, y: s.y, angle: s.angle } : body.transform
   const c = Math.cos(t.angle)
   const sn = Math.sin(t.angle)
-  return { x: t.x + a.local.x * c - a.local.y * sn, y: t.y + a.local.x * sn + a.local.y * c }
+  return { x: t.x + local.x * c - local.y * sn, y: t.y + local.x * sn + local.y * c }
 }
 
 function drawGases(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera, state: VisualState | null): void {

@@ -27,6 +27,7 @@ import {
 } from 'planck'
 import type { Anchor, Constraint, Plane, Scene } from '@core/scene'
 import { findMaterial, resolveFriction, resolveRestitution } from '@core/scene'
+import { resolvePortRef } from '@core/ports'
 import { polygonArea } from '@core/math'
 import { toPhysicsFixtures, type FixtureSpec } from '@core/shapes'
 import { CriteriaRunner, pairKey, type BodySample, type CriterionResult, type Frame } from '@core/criterion'
@@ -124,6 +125,10 @@ export class Simulation {
   private sceneById = new Map<string, import('@core/scene').Body>()
   private trackSupport = new Map<string, number>()
   private lastSubDt = 1 / 240
+  /** 传送带：物体 → 表面切向速度（m/s）。pre-solve 里写进接触，摩擦就能带着物体走。 */
+  private belts = new Map<PlanckBody, number>()
+  /** 马达：物体 → 目标角速度（rad/s）。每子步直接写，像伺服一样确定。 */
+  private motors = new Map<PlanckBody, number>()
   /** 调试用：最近一次轨道反力（法向分量） */
   lastFriction = -1
   trackDebug: Record<string, { r: number; dotIn: number; attached: boolean }> = {}
@@ -267,6 +272,14 @@ export class Simulation {
         this.createPulleyJoint(c)
       } else if (c.type === 'prismatic') {
         this.createPrismaticJoint(c)
+      } else if (c.type === 'pin') {
+        this.createPinJoint(c)
+      } else if (c.type === 'motor') {
+        const body = this.byId.get(c.bodyId)
+        if (body && body.isDynamic()) this.motors.set(body, c.omega)
+      } else if (c.type === 'belt') {
+        const body = this.byId.get(c.bodyId)
+        if (body) this.belts.set(body, c.speed)
       }
     }
 
@@ -307,9 +320,12 @@ export class Simulation {
 
   private anchorWorld(a: Anchor): { body: PlanckBody | null; point: { x: number; y: number } } | null {
     if ('world' in a) return { body: null, point: a.world }
-    const body = this.byId.get(a.bodyId)
+    const r = resolvePortRef(this.scene, a)
+    if (!r) return null
+    const body = r.bodyId ? this.byId.get(r.bodyId) : null
     if (!body) return null
-    const p = body.getWorldPoint(new Vec2(a.local.x, a.local.y))
+    // 用关节同款局部坐标取世界点：端口解析已经算过世界点，但物体可能已经动了，这里以物理体为准
+    const p = body.getWorldPoint(new Vec2(r.local.x, r.local.y))
     return { body, point: { x: p.x, y: p.y } }
   }
 
@@ -326,14 +342,20 @@ export class Simulation {
   }
 
   /** world 锚点：给它建一个无 fixture 的静态体，关节就能挂上去 */
+  /**
+   * 解析约束的一端。三种写法（命名端口 / 局部坐标 / 世界点）统一走 `resolvePortRef`，
+   * 所以「接到球的上端」和「接到 (0, 0.15)」在物理层是同一条路。
+   */
   private resolveAnchor(a: Anchor): { body: PlanckBody; local: Vec2; sceneId?: string } | null {
-    if ('world' in a) {
-      const body = this.world.createBody({ type: 'static', position: new Vec2(a.world.x, a.world.y) })
+    const r = resolvePortRef(this.scene, a)
+    if (!r) return null
+    if (!r.bodyId) {
+      const body = this.world.createBody({ type: 'static', position: new Vec2(r.point.x, r.point.y) })
       return { body, local: new Vec2(0, 0) }
     }
-    const body = this.byId.get(a.bodyId)
+    const body = this.byId.get(r.bodyId)
     if (!body) return null
-    return { body, local: new Vec2(a.local.x, a.local.y), sceneId: a.bodyId }
+    return { body, local: new Vec2(r.local.x, r.local.y), sceneId: r.bodyId }
   }
 
   private createPulleyJoint(c: Extract<Constraint, { type: 'pulley' }>): void {
@@ -378,6 +400,28 @@ export class Simulation {
         axis,
       ),
     )
+  }
+
+  /**
+   * 销钉：把一个点钉在世界某处，物体还能绕它转。
+   * 实现 = 一个静态锚点 + RevoluteJoint（局部锚点取物体上对应那个点）。
+   */
+  private createPinJoint(c: Extract<Constraint, { type: 'pin' }>): void {
+    const body = this.byId.get(c.bodyId)
+    if (!body) return
+    const world = new Vec2(c.point.x, c.point.y)
+    const anchor = this.world.createBody({ type: 'static', position: world })
+    this.world.createJoint(
+      new RevoluteJoint({ bodyA: anchor, bodyB: body, localAnchorA: new Vec2(0, 0), localAnchorB: body.getLocalPoint(world) }),
+    )
+  }
+
+  /** 马达：每子步把角速度写成目标值（伺服语义，确定、可复现） */
+  private applyMotors(): void {
+    for (const [body, omega] of this.motors) {
+      if (!body.isDynamic() || body.isFixedRotation()) continue
+      body.setAngularVelocity(omega)
+    }
   }
 
   /** 气体：P = nRT/V，气压与外界压强差作用在活塞上 */
@@ -604,6 +648,15 @@ export class Simulation {
       this.lastFriction = mu
       c.setFriction(mu)
       c.setRestitution(resolveRestitution(this.scene, ma, mb))
+
+      // 传送带：把表面切向速度写进接触，摩擦就会带着物体走（Box2D 的 conveyor 做法）。
+      // 符号是实测出来的（见 tests/build-ops.test.ts）：Box2D 的切向 = 法线逆时针转 90°，
+      // 而法线从 A 指向 B，所以传送带当 A 时要取正、当 B 时要取负，
+      // 这样 +speed 恒等于「沿传送带自身 +x 方向」。
+      const ba = this.belts.get(c.getFixtureA().getBody())
+      const bb = this.belts.get(c.getFixtureB().getBody())
+      const beltSpeed = ba ?? bb
+      if (beltSpeed !== undefined) c.setTangentSpeed(ba !== undefined ? beltSpeed : -beltSpeed)
     })
   }
 
@@ -619,6 +672,7 @@ export class Simulation {
       applyFields({ scene: this.scene, bodies: this.planckBodies, plane: this.plane }, subDt)
       this.applySprings()
       this.applyAppliedForces()
+      this.applyMotors()
       this.world.step(subDt, 8, 3)
     }
     this.updateTracks(subDt)

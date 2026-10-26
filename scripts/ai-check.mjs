@@ -44,9 +44,14 @@ const CASES = [
     expect: 'unsupported',
   },
   {
-    name: '传送带（应该明确拒绝，不是硬套）',
-    text: '水平传送带以 2 m/s 匀速运动，把一个物块轻放在传送带左端，物块与传送带间动摩擦因数 0.2，传送带长 3 m，求物块从左端运动到右端的时间。',
-    expect: 'unsupported',
+    name: '传送带（build 模式：现成模型里没有，得自己搭）',
+    text: '水平传送带以 2 m/s 匀速向右运动，把一个物块轻放在传送带左端，物块与传送带间动摩擦因数 0.2，传送带长 3 m，求物块从左端运动到右端的时间。',
+    expect: 'build',
+  },
+  {
+    name: '电机带动的转盘（build 模式 + 语义端口）',
+    text: '一个半径 0.3 m 的圆盘装在水平转轴上，电机带动它以 3 rad/s 匀速转动。圆盘边缘放一个小物块，圆盘与物块间动摩擦因数 0.4。',
+    expect: 'build',
   },
 ]
 
@@ -84,6 +89,8 @@ for (const c of CASES) {
       added: window.app.library.models.length > 0,
       title: m?.title,
       preset: m?.scene?.meta?.preset ?? null,
+      // chain 和 build 都没有 preset，靠 note 前缀区分（两边的 note 是不同前缀）
+      isBuild: String(m?.scene?.meta?.note ?? '').startsWith('AI 搭的场景'),
       assumptions: m?.scene?.meta?.assumptions ?? [],
       params: m?.scene?.params ?? {},
       bodies: m?.scene?.bodies?.length ?? 0,
@@ -92,7 +99,7 @@ for (const c of CASES) {
   }, c.text)
 
   const grew = r.models > before
-  const verdict = r.ok && grew ? (r.preset ? `preset:${r.preset}` : 'chain') : 'unsupported'
+  const verdict = r.ok && grew ? (r.preset ? `preset:${r.preset}` : r.isBuild ? 'build' : 'chain') : 'unsupported'
   const hit =
     c.expect.startsWith('preset:') ? verdict === c.expect : c.expect.includes(verdict) || verdict === 'unsupported'
   console.log(`${hit ? 'PASS' : 'FAIL'}  ${c.name}`)

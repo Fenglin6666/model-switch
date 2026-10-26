@@ -1,6 +1,7 @@
 /** 守恒监视器（架构 §5.6）：既是质量保证，也是教学点。 */
 import type { Body as PlanckBody } from 'planck'
 import type { Anchor, Plane, Scene } from '@core/scene'
+import { anchorLocal } from '@core/ports'
 
 export type EnergySample = { ke: number; pe: number; total: number }
 
@@ -19,7 +20,9 @@ export function measure(
     if ('world' in a) return a.world
     const body = byId.get(a.bodyId)
     if (!body) return null
-    const p = body.getWorldPoint({ x: a.local.x, y: a.local.y })
+    const local = anchorLocal(scene, a)
+    if (!local) return null
+    const p = body.getWorldPoint({ x: local.x, y: local.y })
     return { x: p.x, y: p.y }
   }
   for (const { body } of entities) {
