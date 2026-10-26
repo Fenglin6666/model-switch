@@ -157,21 +157,34 @@ line('')
 line('=== 想往上走，每一步买多少 ===')
 const steps = [
   { what: '场类：速度空间相图 + 磁场几何求解', gain: byField['磁场'] || 0, note: '磁场题难在几何，不在积分' },
-  { what: '复合场（E/B 交替、速度选择）', gain: byField['复合场'] || 0, note: '现在是两个独立预置，没有「先电场后磁场」' },
+  { what: '复合场（E/B 交替、速度选择）', gain: byField['复合场'] || 0, note: 'crossedFields 预置已有；「先电场后磁场」靠区域限定，不是新机制' },
   { what: '电场深化（点电荷叠加是解析题，不做）', gain: byField['电场'] || 0, note: '66 道里有一部分本来就该拒绝' },
   { what: '多过程串联（build 更好用 + 组件参数槽）', gain: count(d2.filter((r) => r.has_multi_stage === 'True')), note: '和上面三项有重叠' },
-  { what: '临界的表达（不是「找临界」，是判据翻转 + 一键跳临界点）', gain: count(d2.filter((r) => r.has_critical === 'True')), note: '48% 的题含临界' },
+  { what: '临界的表达（判据翻转 + 倍率慢放，让人自己找临界）', gain: count(d2.filter((r) => r.has_critical === 'True')), note: '48% 的题含临界；不做「一键跳临界」' },
 ]
 for (const s of steps) line('  ' + String(s.gain).padStart(4) + ' 道  ' + s.what + '   （' + s.note + '）')
 line('')
 line('注：gain 是「提到这个维度的题数」，多维度会重叠，不能直接相加。')
 line('')
 
+// 电磁感应单独统计：它按「场」分类会被归到无场/磁场里，但缺的是另一类基元（回路）。
+// 关键词要扫整行——语料里没有专门的 induction 列，关键词散在题干摘要/约束/理由里。
+const INDUCTION_KW = ['感应', '电动势', '安培力', '楞次']
+const hasInduction = (r) => INDUCTION_KW.some((k) => Object.values(r).some((v) => String(v ?? '').includes(k)))
+const ind = d2.filter(hasInduction)
+line('=== 电磁感应（单棒切割）===')
+line('  D2 里命中「感应/电动势/安培力/楞次」：' + ind.length + ' 道（' + pct(ind.length) + ' of D2）')
+line('  → 单棒切割已由 circuit 基元覆盖（tests/induction.test.ts 卡收尾速度与能量）')
+line('  → 双棒 / 电容 / 线圈转动仍然建不了，这部分题只能 unsupported')
+line('')
+
 line('=== 结论 ===')
 line('  1. 100% 不可能：' + (calc.length - d2.length) + ' 道计算题本身不是 D2（D3 需专门模块 / D0 不可建模 / D1 静态）。')
-line('  2. 现在的天花板约 ' + pct(noField.length) + '（纯力学全吃下）+' + ' 少量简单场。')
-line('  3. 到 85% 需要三个机制包：磁场几何 / 复合场 / 电场深化。每个都是数周 + 物理正确性验证。')
-line('  4. 85% 之后边际收益断崖——剩下的是长尾组合，每加一个只赚几道题。')
+line('  2. 纯力学 ' + pct(noField.length) + ' 现在就能全吃下（约束全在已支持集合里）。')
+line('  3. 场上再补 ' + pct((byField['磁场'] || 0) + (byField['复合场'] || 0) + (byField['电场'] || 0)) + '：匀强 E/B、正交复合场、区域限定都已经有了；')
+line('     真正还没做的是「速度空间相图」这类读图工具，不是物理。')
+line('  4. 电磁感应 ' + ind.length + ' 道里，单棒切割已能建；双棒/电容/线圈转动建不了，会明确 unsupported。')
+line('  5. 剩下的边际收益断崖——长尾组合每加一个只赚几道题。')
 line('')
 line('  → 所以「覆盖所有」不该是目标。真正的指标是「老师手上那道题，多大几率 10 秒内变成能拨的模型」，')
 line('    而它 = 题库命中率 × AI 建成率。题库（确定能建）比生成（可能能建）更能直接提升体验。')

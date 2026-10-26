@@ -30,7 +30,7 @@ import { findMaterial, resolveFriction, resolveRestitution } from '@core/scene'
 import { resolvePortRef } from '@core/ports'
 import { polygonArea } from '@core/math'
 import { toPhysicsFixtures, type FixtureSpec } from '@core/shapes'
-import { CriteriaRunner, pairKey, type BodySample, type CriterionResult, type Frame } from '@core/criterion'
+import { CriteriaRunner, pairKey, regionContains, type BodySample, type CriterionResult, type Frame } from '@core/criterion'
 import { applyFields, applyPairwiseInteractions } from './forces'
 import { measure } from './monitor'
 
@@ -42,7 +42,7 @@ export type SimEvent = {
   message?: string
 }
 
-/** 力的分量，渲染层画受力图用（N）。g=重力，a=外力，e=场力，t=绳/杆/弹簧张力 */
+/** 力的分量，渲染层画受力图用（N）。g=重力，a=外力，e=场力，t=绳/杆/弹簧张力，b=安培力 */
 export type ForceArrows = {
   gx: number
   gy: number
@@ -52,6 +52,9 @@ export type ForceArrows = {
   ey: number
   tx: number
   ty: number
+  /** 安培力（导体棒切割时由 circuit 算出）。单独一档是为了标「F安」而不是混进 F1/F2 */
+  bx: number
+  by: number
   applied: Array<{ x: number; y: number }>
 }
 
@@ -69,6 +72,8 @@ export type SimState = {
   criteria: Record<string, CriterionResult>
   /** track 约束是否还托着球（用于 UI 高亮与判据） */
   trackAttached: Record<string, boolean>
+  /** 电路读数：ε / I / 焦耳热功率，按约束 id 索引（导体棒切割） */
+  circuits: Record<string, { emf: number; current: number; power: number; heat: number }>
   speedClamped: boolean
   gases: Record<string, { p: number; v: number; t: number; length: number }>
   events: SimEvent[]
@@ -131,6 +136,10 @@ export class Simulation {
   private motors = new Map<PlanckBody, number>()
   /** 调试用：最近一次轨道反力（法向分量） */
   lastFriction = -1
+  /** 导体棒受到的安培力（按 bodyId），updateForces 拿去画箭头 */
+  private ampere = new Map<string, { x: number; y: number }>()
+  /** 焦耳热累计（按约束 id），一帧里多次子步要接着加 */
+  private heat = new Map<string, number>()
   trackDebug: Record<string, { r: number; dotIn: number; attached: boolean }> = {}
 
   constructor(scene: Scene) {
@@ -154,6 +163,8 @@ export class Simulation {
     this.sceneById = new Map(scene.bodies.map((b) => [b.id, b]))
     this.trackSupport.clear()
     this.lastClampEvent = -1
+    this.ampere.clear()
+    this.heat.clear()
     this.state = {
       t: 0,
       bodies: {},
@@ -163,6 +174,7 @@ export class Simulation {
       momentumScale: 0,
       criteria: {},
       trackAttached: {},
+      circuits: {},
       energy0: undefined,
       speedClamped: false,
       gases: {},
@@ -206,7 +218,7 @@ export class Simulation {
         ay: 0,
         omega: b.omega ?? 0,
         contactCount: 0,
-        force: { gx: 0, gy: 0, ax: 0, ay: 0, ex: 0, ey: 0, tx: 0, ty: 0, applied: [] },
+        force: { gx: 0, gy: 0, ax: 0, ay: 0, ex: 0, ey: 0, tx: 0, ty: 0, bx: 0, by: 0, applied: [] },
       }
 
       const specs = toPhysicsFixtures(b.shape, this.precision, {
@@ -315,6 +327,42 @@ export class Simulation {
       const fy = -ny * mag
       if (bodyB && bodyB.isDynamic()) bodyB.applyForceToCenter(new Vec2(fx, fy), true)
       if (bodyA && bodyA.isDynamic()) bodyA.applyForceToCenter(new Vec2(-fx, -fy), true)
+    }
+  }
+
+  /**
+   * 导体棒切割磁感线：ε = BLv → I = ε/R → F = BIL。
+   *
+   * 安培力必须「反抗相对运动」（楞次定律），所以 F 取负号；这也保证了
+   * 收尾速度 v∞ = (F外 + emf0·B·L/R)·R/(B²L²) 是稳定解而不是发散的。
+   * 每子步都要算：v 在变，I 也跟着变，不能一帧算一次。
+   */
+  private applyCircuits(dt: number): void {
+    this.ampere.clear()
+    for (const c of this.scene.constraints) {
+      if (c.type !== 'circuit') continue
+      const body = this.byId.get(c.bodyId)
+      if (!body || !body.isDynamic()) continue
+      const field = this.scene.fields.find((f) => f.id === c.fieldId)
+      if (!field || field.kind !== 'uniform' || field.type !== 'B' || field.enabled === false) continue
+      const R = c.resistance
+      if (!(R > 0)) continue
+      const L = c.length
+      const B = field.bz
+      const axis = c.axis ?? 'x'
+      const v = body.getLinearVelocity()
+      const vAxis = axis === 'y' ? v.y : v.x
+      const emf = B * L * vAxis + (c.emf0 ?? 0)
+      const current = emf / R
+      const F = -B * current * L
+      const fx = axis === 'y' ? 0 : F
+      const fy = axis === 'y' ? F : 0
+      body.applyForceToCenter(new Vec2(fx, fy), true)
+
+      this.ampere.set(c.bodyId, { x: fx, y: fy })
+      const heat = (this.heat.get(c.id) ?? 0) + current * current * R * dt
+      this.heat.set(c.id, heat)
+      this.state.circuits[c.id] = { emf, current, power: current * current * R, heat }
     }
   }
 
@@ -472,6 +520,9 @@ export class Simulation {
           bodyB: B.body,
           localAnchorA: A.local,
           localAnchorB: B.local,
+          // 铰链连的两个物体本来就贴在一起（门和门框）。planck 默认
+          // collideConnected=true，让这对 fixture 继续互相顶——铰链在和接触约束打架。
+          collideConnected: false,
         }),
       )
     }
@@ -493,6 +544,8 @@ export class Simulation {
       s.force.ey = 0
       s.force.tx = 0
       s.force.ty = 0
+      s.force.bx = 0
+      s.force.by = 0
       s.force.applied = []
       const sb = this.sceneById.get(s.id)
       if (!sb) continue
@@ -510,21 +563,22 @@ export class Simulation {
             s.force.applied.push({ x: f.x, y: f.y })
           }
         }
+        // 安培力单独一档：混进 applied 会变成「F2」，学生不知道那是安培力
+        const amp = this.ampere.get(s.id)
+        if (amp) {
+          s.force.bx = amp.x
+          s.force.by = amp.y
+        }
         const q = sb.charge ?? 0
         if (q !== 0) {
           for (const f of this.scene.fields) {
             if (f.kind !== 'uniform' || f.type !== 'E' || f.enabled === false) continue
+            // 区域判定必须和真实受力（forces.ts 的 applyFields）走同一个函数：
+            // 这里原来手写了个「只认矩形」的 AABB，圆形区域会被当成全场——
+            // 于是面板上显示有电场力，实际却不受力。显示和物理不能各算一套。
             if (f.regionId) {
               const region = this.scene.regions.find((r) => r.id === f.regionId)
-              if (!region) continue
-              // 复用 criterion 的区域判定会很重，这里用简单的 AABB（区域多为矩形）
-              const local = { x: s.x - region.transform.x, y: s.y - region.transform.y }
-              const c0 = Math.cos(-region.transform.angle)
-              const s0 = Math.sin(-region.transform.angle)
-              const lx = local.x * c0 - local.y * s0
-              const ly = local.x * s0 + local.y * c0
-              const shape = region.shape
-              if (shape.type === 'rect' && (Math.abs(lx) > shape.w / 2 || Math.abs(ly) > shape.h / 2)) continue
+              if (!region || !regionContains(region, { x: s.x, y: s.y })) continue
             }
             s.force.ex += q * f.vector.x
             s.force.ey += q * f.vector.y
@@ -671,6 +725,7 @@ export class Simulation {
       applyPairwiseInteractions({ scene: this.scene, bodies: this.planckBodies, plane: this.plane })
       applyFields({ scene: this.scene, bodies: this.planckBodies, plane: this.plane }, subDt)
       this.applySprings()
+      this.applyCircuits(subDt)
       this.applyAppliedForces()
       this.applyMotors()
       this.world.step(subDt, 8, 3)

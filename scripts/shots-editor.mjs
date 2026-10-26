@@ -96,6 +96,20 @@ check(
   JSON.stringify(speed),
 )
 
+// 4. 左面板底部不打架：读数卡（含判据 chip）不能压住「世界/组件/题目/返回」
+// 这条是被真实 bug 逼出来的——chip 一长就盖住链接，肉眼看截图才发现的。
+const foot = await page.evaluate(() => {
+  const a = window.app
+  const p = a.panelRect()
+  const f = a.footLayout(p, false, 0)
+  return { ...f, readoutBottom: f.readoutY + f.readoutH }
+})
+check(
+  '读数卡底边在底部链接之上（不重叠）',
+  foot.readoutBottom <= foot.linkTop,
+  `readoutBottom=${foot.readoutBottom} linkTop=${foot.linkTop}`,
+)
+
 check('无运行时错误', errors.length === 0, errors.slice(0, 2).join(' | '))
 
 const failed = results.filter((r) => !r.ok)

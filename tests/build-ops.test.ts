@@ -189,3 +189,42 @@ describe('之前只在类型里声明的三种约束，现在真能跑', () => {
     expect(r.warnings.join(' ')).toContain('motor-on-locked-body')
   })
 })
+
+describe('电磁感应：circuit 指令', () => {
+  it('addField(B) + circuit → 棒被恒力拉动，出现动生电动势', () => {
+    const { scene } = build([
+      {
+        op: 'addBody',
+        id: 'rod',
+        shape: { kind: 'rect', w: 0.06, h: 0.5 },
+        at: { x: 0, y: 0 },
+        behavior: 'rolling',
+        mass: 0.2,
+        force: { x: 0.5, y: 0 },
+      },
+      { op: 'addField', type: 'B', magnitude: 0.8 },
+      { op: 'addConstraint', type: 'circuit', bodyId: 'rod', params: { length: 0.5, resistance: 0.4 } },
+    ])
+    const c = scene.constraints.find((x) => x.type === 'circuit')
+    expect(c).toBeTruthy()
+    if (c?.type === 'circuit') {
+      expect(c.length).toBe(0.5)
+      expect(c.resistance).toBe(0.4)
+      // fieldId 自动指向那个 B 场（AI 不知道我们内部怎么编号）
+      expect(scene.fields.some((f) => f.id === c.fieldId)).toBe(true)
+    }
+    const sim = run(scene, 240)
+    expect(sim.state.circuits['c1']).toBeTruthy()
+    expect(sim.state.bodies.rod!.vx).toBeGreaterThan(0.1)
+  })
+
+  it('没有磁场就报错跳过，而不是静默加一条不工作的约束', () => {
+    const r = sceneFromOps([
+      { op: 'addBody', id: 'rod', shape: { kind: 'rect', w: 0.06, h: 0.5 }, at: { x: 0, y: 0 }, behavior: 'rolling' },
+      { op: 'addConstraint', type: 'circuit', bodyId: 'rod', params: { length: 0.5, resistance: 0.4 } },
+    ])
+    expect(r.ok).toBe(true)
+    expect(r.scene.constraints.some((c) => c.type === 'circuit')).toBe(false)
+    expect(r.warnings.join(' ')).toContain('找不到匀强磁场')
+  })
+})

@@ -20,6 +20,9 @@ export type ForceVisual = {
   ey: number
   tx: number
   ty: number
+  /** 安培力（可选：只有导体棒切割才有） */
+  bx?: number
+  by?: number
   applied?: Array<{ x: number; y: number }>
 }
 
@@ -822,7 +825,18 @@ function drawForces(
 ): void {
   if (!state) return
   const s = camera.pixelScale
-  const arrow = (p: Vec2, vx: number, vy: number, color: string, label: string, showLabel: boolean, ref: number, withValue = true) => {
+  const arrow = (
+    p: Vec2,
+    vx: number,
+    vy: number,
+    color: string,
+    label: string,
+    showLabel: boolean,
+    ref: number,
+    withValue = true,
+    /** 标签额外沿法向挪几个像素：三个力都水平时标签会叠成一坨 */
+    labelShift = 0,
+  ) => {
     const mag = Math.hypot(vx, vy)
     if (mag < 0.15) return
     // 相对于该物体的重力来定箭头长度：拉力/重力一眼能比出来
@@ -856,7 +870,7 @@ function drawForces(
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       const text = showLabel ? (withValue ? `${label} ${mag.toFixed(1)}N` : label) : ''
-      ctx.fillText(text, to.x + ux2 * 12, to.y + uy2 * 12)
+      ctx.fillText(text, to.x + ux2 * 12 - uy2 * labelShift, to.y + uy2 * 12 + ux2 * labelShift)
     }
   }
   for (const body of scene.bodies) {
@@ -874,9 +888,12 @@ function drawForces(
       const mag = Math.hypot(a.x, a.y)
       const deg = Math.round((Math.atan2(a.y, a.x) * 180) / Math.PI)
       const label = `F${i + 1}${show ? ` ${mag.toFixed(1)}N · ${deg}°` : ''}`
-      arrow(p, a.x, a.y, color, label, true, ref, false)
+      // 标签上下错开：拉力和安培力都水平时，不错开就是两行字叠在一起
+      arrow(p, a.x, a.y, color, label, true, ref, false, -11)
     })
     arrow(p, f.ex, f.ey, THEME.blue, 'qE', show, ref)
+    // 安培力单独标：它是「磁场对电流的作用」，和 qE 不是一回事，混在一起学生会算错
+    if (f.bx || f.by) arrow(p, f.bx ?? 0, f.by ?? 0, THEME.amber, 'F安', show, ref, true, 11)
     arrow(p, f.tx, f.ty, THEME.green, 'T', show, ref)
   }
   void s

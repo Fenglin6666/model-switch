@@ -70,6 +70,8 @@ export function constraintDof(c: Constraint): number {
       return 2
     case 'motor':
     case 'belt':
+    case 'circuit':
+      // circuit 只加力、不加约束——棒该怎么动还是怎么动，自由度不减
       return 0
     default:
       return 1

@@ -136,17 +136,26 @@ kind 只能是 slope(斜面) / flat(水平) / arc(圆弧) / upslope(上坡)，�
    shape 只能是：circle{r} / rect{w,h} / polygon{points:[{x,y}...]} / line{from,to}
    behavior：fixed(固定地形) / moving(会动) / rolling(滚动的刚体) / sliding(匀速平移)
    角度用 angleDeg；不给值就走默认（质量、摩擦这些可以不写）
+   常驻外力用 "force":{"x":0.5,"y":0}（单位 N，世界坐标）。**安培力不要自己加**，circuit 会算。
 
 2. 加约束：{"op":"addConstraint","type":"rope","a":{"body":"ball","port":"top"},"b":{"world":{"x":0,"y":2}},
             "params":{"length":1.2}}
-   type：rope / rod / spring / hinge / pin / motor / belt
+   type：rope / rod / spring / hinge / pin / motor / belt / circuit
    **两端只能引用端口**，不要自己算坐标：每个物体都自带 center/top/bottom/left/right/tl/tr/bl/br。
    自己声明的端口（转轴、挂钩）写在 addBody 的 ports 里：
      "ports":[{"id":"shaft","kind":"axle","at":"center"}]
-   pin / motor / belt 只作用于一个物体，用 "bodyId" 而不是 a/b：
+   pin / motor / belt / circuit 只作用于一个物体，用 "bodyId" 而不是 a/b：
      {"op":"addConstraint","type":"motor","bodyId":"wheel","params":{"omega":3}}
      {"op":"addConstraint","type":"belt","bodyId":"belt","params":{"speed":2}}
    rope/rod 不写 length 就按两端当前距离；spring 用 params{k, l0, damping}
+
+   circuit = 导体棒切割磁感线（电磁感应单棒题）。它自己会算动生电动势和安培力，
+   **不要另外给棒加一个"安培力"外力**，那会算两遍：
+     {"op":"addConstraint","type":"circuit","bodyId":"rod","params":{"length":0.8,"resistance":1}}
+   params：length 有效长度 L（导轨间距，m）、resistance 回路总电阻 R（Ω）、
+           emf0 外接电源电动势（导轨接电池才写）、axis 1 表示棒沿竖直方向滑（默认水平）
+   它用的是场景里的匀强磁场，所以**先 addField type=B，再 addConstraint circuit**。
+   双棒、线圈转动、变压器仍然做不了（见规则 6）。
 
 3. 加场：{"op":"addField","type":"E","magnitude":40,"angleDeg":90}
 
@@ -178,7 +187,9 @@ kind 只能是 slope(斜面) / flat(水平) / arc(圆弧) / upslope(上坡)，�
 3. 单位一律换算成 SI：cm→m、g→kg、km/h→m/s、度→度。
 4. **不要为了「能建」而套一个近似的模型**。斜面 + 圆弧 + 平抛三个阶段的题，不要只给 incline。
 5. assumptions 用简短中文，写清你替题目补的假设（滑块还是小球、光滑还是粗糙、槽固定还是可移动、计不计空气阻力）。
-6. 电磁感应、热学、光学、波、碰撞、传送带、连接体静力学——这些当前没有对应模型，直接 unsupported。
+6. 电磁感应**只有单棒切割能做**（导轨 + 一根棒 + 一个回路电阻，用 circuit）。双棒、线圈绕轴转动、
+   变压器、热学、光学、波、碰撞的定量计算、连接体静力学——这些当前没有对应模型，直接 unsupported。
+   拿不准的时候：宁可 unsupported，也不要硬套一个错的模型去演示。
 
 ## 两个例子
 
@@ -189,7 +200,10 @@ kind 只能是 slope(斜面) / flat(水平) / arc(圆弧) / upslope(上坡)，�
 {"mode":"chain","stages":[{"kind":"slope","angle":37,"length":2,"radius":1,"arcDeg":60},{"kind":"flat","length":1.5,"radius":1,"arcDeg":60},{"kind":"arc","angle":0,"length":1,"radius":0.6,"arcDeg":90}],"assumptions":["小球，平动","水平段粗糙 μ=0.2","圆弧光滑"],"reason":"斜面→水平→圆弧的三段多过程，用 chain 拼","confidence":0.85}
 
 题干：一矩形线圈在匀强磁场中绕垂直于磁场的轴匀速转动，求感应电动势的最大值。
-{"mode":"unsupported","unsupported":["电磁感应"],"assumptions":[],"reason":"电磁感应没有对应模型","confidence":0.95}
+{"mode":"unsupported","unsupported":["线圈转动"],"assumptions":[],"reason":"线圈绕轴转动需要交变电动势，当前只有单棒切割模型","confidence":0.95}
+
+题干：两根平行光滑导轨间距 0.5 m，水平放置，处在竖直向下的匀强磁场中，磁感应强度 0.8 T。导轨上放一根质量 0.2 kg 的金属棒，回路总电阻 0.4 Ω。用 0.5 N 的水平恒力拉棒，求棒的最大速度。
+{"mode":"build","ops":[{"op":"addBody","id":"railTop","shape":{"kind":"line","from":{"x":-2,"y":0.25},"to":{"x":2,"y":0.25}},"behavior":"fixed","label":"导轨"},{"op":"addBody","id":"railBottom","shape":{"kind":"line","from":{"x":-2,"y":-0.25},"to":{"x":2,"y":-0.25}},"behavior":"fixed","label":"导轨"},{"op":"addBody","id":"rod","shape":{"kind":"rect","w":0.05,"h":0.46},"at":{"x":-1.5,"y":0},"behavior":"rolling","mass":0.2,"force":{"x":0.5,"y":0},"label":"金属棒"},{"op":"addField","type":"B","magnitude":0.8},{"op":"addConstraint","type":"circuit","bodyId":"rod","params":{"length":0.5,"resistance":0.4}}],"assumptions":["导轨光滑","棒只平动不转动","恒力 0.5 N 一直作用"],"reason":"单棒切割：一根棒 + 两条导轨 + 一个回路电阻，用 circuit 表达动生电动势与安培力","confidence":0.9}
 
 题干：水平传送带长 3 m，以 2 m/s 匀速向右运动，把物块轻放在左端，物块与传送带间动摩擦因数 0.2。
 {"mode":"build","ops":[{"op":"addBody","id":"belt","shape":{"kind":"line","from":{"x":0,"y":0},"to":{"x":3,"y":0}},"behavior":"fixed","label":"传送带"},{"op":"addConstraint","type":"belt","bodyId":"belt","params":{"speed":2}},{"op":"addBody","id":"block","shape":{"kind":"rect","w":0.2,"h":0.15},"at":{"x":0.15,"y":0.08},"behavior":"moving","mass":0.5,"friction":0.2,"label":"物块"}],"assumptions":["传送带匀速","物块初速为 0","忽略空气阻力"],"reason":"传送带不是现成模型，用一条固定线 + 表面速度 + 一个物块搭出来","confidence":0.9}`
@@ -333,6 +347,12 @@ export function parsePlan(raw: string): PlanParse {
         const friction = num(r.friction)
         if (friction !== undefined) op.friction = friction
         if (typeof r.label === 'string') op.label = r.label
+        const force = r.force as { x?: unknown; y?: unknown } | undefined
+        if (force && typeof force === 'object') {
+          const fx = num(force.x)
+          const fy = num(force.y)
+          if (fx !== undefined || fy !== undefined) op.force = { x: fx ?? 0, y: fy ?? 0 }
+        }
         if (Array.isArray(r.ports)) {
           op.ports = r.ports
             .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
@@ -349,12 +369,13 @@ export function parsePlan(raw: string): PlanParse {
       }
       if (kind === 'addConstraint') {
         const type = String(r.type ?? '')
-        if (!['rope', 'rod', 'spring', 'hinge', 'pin', 'motor', 'belt'].includes(type)) continue
+        if (!['rope', 'rod', 'spring', 'hinge', 'pin', 'motor', 'belt', 'circuit'].includes(type)) continue
         const op: BuildOp = { op: 'addConstraint', type: type as never }
         if (typeof r.id === 'string') op.id = r.id
         if (r.a && typeof r.a === 'object') op.a = r.a as PortRefLike
         if (r.b && typeof r.b === 'object') op.b = r.b as PortRefLike
         if (typeof r.bodyId === 'string') op.bodyId = r.bodyId
+        if (typeof r.fieldId === 'string') op.fieldId = r.fieldId
         if (r.params && typeof r.params === 'object') {
           const params: Record<string, number> = {}
           for (const [k, v] of Object.entries(r.params as Record<string, unknown>)) {
@@ -455,16 +476,23 @@ export type BuildOp =
       charge?: number
       friction?: number
       label?: string
+      /**
+       * 常驻外力（N，世界坐标）。电磁感应那类「用恒力拉棒」的题离不开它——
+       * 没有它，AI 就只能干看着棒不动，或者自己编一个安培力进去（那是错的）。
+       */
+      force?: { x: number; y: number }
       /** 语义端口（转轴/挂钩）；位置可以用派生端口名指定，如 at:'center' */
       ports?: { id: string; kind?: PortKind; at?: string; local?: { x: number; y: number } }[]
     }
   | {
       op: 'addConstraint'
       id?: string
-      type: 'rope' | 'rod' | 'spring' | 'hinge' | 'pin' | 'motor' | 'belt'
+      type: 'rope' | 'rod' | 'spring' | 'hinge' | 'pin' | 'motor' | 'belt' | 'circuit'
       a?: PortRefLike
       b?: PortRefLike
       bodyId?: string
+      /** circuit 专用：磁场的 id（不写就取场景里第一个匀强 B） */
+      fieldId?: string
       params?: Record<string, number>
     }
   | { op: 'addField'; type: 'E' | 'B'; magnitude: number; angleDeg?: number }
@@ -553,6 +581,7 @@ export function sceneFromOps(ops: BuildOp[], title = 'AI 搭的场景'): ParseRe
       if (op.mass !== undefined) body.mass = op.mass
       if (op.charge !== undefined) body.charge = op.charge
       if (op.friction !== undefined) body.friction = op.friction
+      if (op.force) body.forces = [{ id: 'f1', x: op.force.x, y: op.force.y }]
       if (op.label) body.label = op.label
       if (op.ports?.length) {
         const ports = op.ports
@@ -611,6 +640,37 @@ export function sceneFromOps(ops: BuildOp[], title = 'AI 搭的场景'): ParseRe
         }
         if (op.type === 'motor') add({ id, type: 'motor', bodyId: op.bodyId, omega: p.omega ?? 3 })
         else add({ id, type: 'belt', bodyId: op.bodyId, speed: p.speed ?? 1 })
+        continue
+      }
+
+      if (op.type === 'circuit') {
+        if (!op.bodyId) {
+          warnings.push(`circuit ${id} 缺 bodyId，跳过`)
+          continue
+        }
+        // 磁场 id：AI 通常不知道我们内部怎么编号，所以允许不写，取第一个匀强 B。
+        // 写错了也不静默失败——记一条 warning，人能看见。
+        const bFields = scene.fields.filter((f) => f.kind === 'uniform' && f.type === 'B')
+        let fieldId = op.fieldId
+        if (fieldId && !bFields.some((f) => f.id === fieldId)) {
+          warnings.push(`circuit ${id} 指定的磁场 ${fieldId} 不存在，改用第一个匀强 B`)
+          fieldId = undefined
+        }
+        const target = fieldId ?? bFields[0]?.id
+        if (!target) {
+          warnings.push(`circuit ${id} 找不到匀强磁场，跳过（先 addField type=B）`)
+          continue
+        }
+        add({
+          id,
+          type: 'circuit',
+          bodyId: op.bodyId,
+          fieldId: target,
+          length: p.length ?? 1,
+          resistance: p.resistance ?? 1,
+          emf0: p.emf0,
+          axis: p.axis === 1 ? 'y' : 'x',
+        })
         continue
       }
 

@@ -51,6 +51,11 @@ export const PARAM_META: Record<string, ParamMeta> = {
   P0: { key: 'P0', label: '外界压强', min: 50, max: 200, step: 5, decimals: 0 },
   r: { key: 'r', label: '距离 r', min: 0.5, max: 5, step: 0.1, decimals: 1 },
   v: { key: 'v', label: '速度 v', unit: 'm/s', min: 0, max: 8, step: 0.2, decimals: 1 },
+  // 电磁感应单棒切割专用。**不能复用 R / L**——那两个在别的场景里是「半径」和「摆长」，
+  // 共用 key 会让面板把电阻标成半径。
+  res: { key: 'res', label: '回路电阻 R', unit: 'Ω', min: 0.1, max: 5, step: 0.1, decimals: 1 },
+  Lrod: { key: 'Lrod', label: '有效长度 L', unit: 'm', min: 0.2, max: 1.5, step: 0.1, decimals: 1 },
+  F: { key: 'F', label: '拉力 F', unit: 'N', min: 0, max: 5, step: 0.1, decimals: 1 },
 }
 
 /** 建议优先显示的参数：临界题里最高频的几个（v₀ → θ → μ → R） */

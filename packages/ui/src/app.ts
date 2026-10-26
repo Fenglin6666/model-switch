@@ -1837,6 +1837,7 @@ if (id) this.ensureBodyVisible(id)
     this.renderResizeHandle()
     this.renderEraserHover()
     this.renderStageChrome()
+    this.renderEnergyBar()
     this.renderChartPanel()
     this.renderSidebar()
     if (this.selectedId || this.selectedConstraintId || this.showWorld) this.renderDock()
@@ -1929,6 +1930,35 @@ if (id) this.ensureBodyVisible(id)
         this.selectedId = null
         this.selectedConstraintId = null
       },
+    })
+  }
+
+  /**
+   * 能量条：只有场景里挂了 energy 观测器才显示。
+   * 为什么放在图表上方左侧：机械能守恒是核心教学点，但它是「一眼看趋势」的东西，
+   * 不需要占一张图的位置——一条堆叠条 + 一个漂移数字就够。
+   */
+  private renderEnergyBar(): void {
+    const obs = this.doc.observers.find((o) => o.kind === 'energy')
+    if (!obs || obs.kind !== 'energy') return
+    const e = this.simA?.state.energy
+    if (!e) return
+    const st = this.stageRect()
+    const chart = this.chartRect()
+    const w = Math.min(216, st.w - 32)
+    const h = 62
+    const bottom = chart ? chart.y : st.y + st.h
+    const r: Rect = { x: st.x + 16, y: bottom - h - 12, w, h }
+    this.ui.card(r, { radius: 10, fill: THEME.card, stroke: THEME.panelLine, shadow: false })
+    // 头一行只放动能/势能——「机械能漂移 x%」由 drawEnergyBar 自己画在条子下面，别重复
+    this.ui.text('动能 ' + e.ke.toFixed(2) + ' J', r.x + 12, r.y + 14, { size: 8.5, color: THEME.blue })
+    this.ui.text('势能 ' + e.pe.toFixed(2) + ' J', r.x + 96, r.y + 14, { size: 8.5, color: THEME.green })
+    const initial = this.simA?.state.energy0 ?? e.total
+    drawEnergyBar(this.ctx, { x: r.x + 12, y: r.y + 26, w: r.w - 24, h: 10 }, {
+      ke: e.ke,
+      pe: e.pe,
+      total: e.total,
+      initial,
     })
   }
 
@@ -2111,15 +2141,13 @@ if (id) this.ensureBodyVisible(id)
     }
 
     // ---- 底部：读数 + 入口（宽屏钉在底部，窄屏跟着内容滚） ----
-    let linkY = p.y + p.h - (narrow ? 4 : 8)
+    const foot = this.footLayout(p, narrow, y)
+    let linkY = foot.linkY
     if (narrow) {
-      this.renderReadouts(p.x + pad, y, innerW, 96)
-      y += 104
-      linkY = y + 24
+      this.renderReadouts(p.x + pad, foot.readoutY, innerW, foot.readoutH)
+      y = foot.readoutY + foot.readoutH + 8
     } else {
-      const footH = 104
-      const footY = p.y + p.h - footH - 16
-      this.renderReadouts(p.x + pad, footY, innerW, footH)
+      this.renderReadouts(p.x + pad, foot.readoutY, innerW, foot.readoutH)
     }
     this.panelMaxScroll = Math.max(0, y + 40 - (p.y + p.h))
     this.panelScroll = clamp(this.panelScroll, -this.panelMaxScroll, 0)
@@ -2407,13 +2435,29 @@ if (id) this.ensureBodyVisible(id)
     return y
   }
 
-  private renderReadouts(x: number, y: number, w: number, h: number): void {
-    const ctx = this.ctx
-    ctx.save()
-    ctx.fillStyle = THEME.panelSoft
-    roundRect(ctx, x, y, w, h, 12)
-    ctx.fill()
-    ctx.restore()
+  /**
+   * 左面板底部那两块（读数卡 / 世界·组件·题目·返回）的几何，只有这里算。
+   *
+   * 为什么单独抽出来：这两块曾经叠在一起——判据 chip 长到把底部链接压住。
+   * 布局散在两处、又只靠肉眼看截图，就会反复犯。现在渲染和断言读同一个数。
+   */
+  private footLayout(p: Rect, narrow: boolean, contentY: number): { readoutY: number; readoutH: number; linkY: number; linkTop: number } {
+    // 高度跟着行数走：有电路时多出 ε / I / 热三行，写死 104 会把 chip 挤出去
+    const readoutH = 20 + this.readoutRows().length * 22 + 26
+    if (narrow) {
+      // 窄屏：跟着内容往下排，不钉底
+      const readoutY = contentY
+      const linkTop = readoutY + readoutH + 8
+      return { readoutY, readoutH, linkY: linkTop + 24, linkTop }
+    }
+    // 宽屏：钉底。链接行占 [linkTop, linkTop+22]，读数卡底边必须让到它上面
+    const linkY = p.y + p.h - 8
+    const linkTop = linkY - 24
+    return { readoutY: linkTop - 8 - readoutH, readoutH, linkY, linkTop }
+  }
+
+  /** 读数卡里有哪些行：速度/时间/位移，有电路时再加电动势、电流、焦耳热 */
+  private readoutRows(): Array<[string, string]> {
     const body = this.focusBody(this.doc)
     const state = body ? this.simA?.state.bodies[body.id] : undefined
     const speed = state ? Math.hypot(state.vx, state.vy) : 0
@@ -2424,6 +2468,23 @@ if (id) this.ensureBodyVisible(id)
       ['已运行', `${t.toFixed(2)} s`],
       ['位移', `${dx.toFixed(2)} m`],
     ]
+    // 导体棒切割：不显示 ε 和 I，学生只看到「棒莫名其妙匀速了」——因果是断的
+    const circuits = Object.values(this.simA?.state.circuits ?? {})
+    if (circuits.length) {
+      const c = circuits[0]!
+      rows.push(['电动势 ε', `${c.emf.toFixed(2)} V`], ['电流 I', `${c.current.toFixed(2)} A`], ['焦耳热 Q', `${c.heat.toFixed(2)} J`])
+    }
+    return rows
+  }
+
+  private renderReadouts(x: number, y: number, w: number, h: number): void {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.fillStyle = THEME.panelSoft
+    roundRect(ctx, x, y, w, h, 12)
+    ctx.fill()
+    ctx.restore()
+    const rows = this.readoutRows()
     let ry = y + 20
     for (const [label, value] of rows) {
       this.ui.text(label, x + 12, ry, { size: 9.5, color: THEME.inkSoft })
@@ -2432,12 +2493,17 @@ if (id) this.ensureBodyVisible(id)
     }
     const chips = this.criteriaChips(this.doc, this.simA)
     if (chips.length) {
+      // 裁到卡片里：判据标签可能很长（「机械能漂移 0.23%」），不裁就会溢出面板跑到舞台上
+      ctx.save()
+      roundRect(ctx, x, y, w, h, 12)
+      ctx.clip()
       let cx = x + 12
       for (const c of chips.slice(0, 2)) {
         const cw = this.ui.chip(cx, y + h - 12, c.label, c.color)
         cx += cw + 5
         if (cx > x + w - 14) break
       }
+      ctx.restore()
     }
   }
 

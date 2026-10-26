@@ -1317,6 +1317,97 @@ function buildCrossedFields(): Scene {
 }
 
 
+/**
+ * 导体棒切割磁感线（单棒 + 导轨 + 回路电阻）。
+ *
+ * 这是「电磁感应」那一类题的最小模型：棒在恒力作用下加速，速度一起来
+ * 动生电动势就有、电流就有、安培力就反抗——加速度越来越小，最后匀速。
+ * 收尾速度 v∞ = F·R/(B²L²)，动能上限也就定了，这就是题里要问的那个速度。
+ *
+ * 只做单棒：双棒题各挂一条 circuit、共享同一个 R 就能表达（本预置不做）。
+ */
+function buildRailEmf(): Scene {
+  const L = 0.8 // 导轨间距 = 棒的有效长度
+  const RAIL_T = 0.08
+  const s = emptyScene('导体棒切割磁感线：收尾速度')
+  s.meta.note =
+    '导轨光滑、磁场垂直纸面向外。棒被恒力拉动，速度越大安培力越大，' +
+    '加速度越来越小，最终匀速 v = F·R/(B²L²)。改 F / R / B 看收尾速度怎么变。'
+  s.meta.tags = ['电磁感应', '安培力', '收尾速度']
+  s.params = { B: 1, Lrod: L, res: 1, F: 1 }
+  s.world.gravity = 9.8
+  s.world.view = { preset: 'side', elevation: 0, azimuth: 0, scale: 150, center: { x: 0, y: 0 } }
+  s.world.duration = 3.5
+  s.world.timeStep = 1 / 960
+  s.world.substeps = 2
+  s.bodies = [
+    // 上下两根导轨（光滑，只负责托住棒）
+    body({ id: 'railTop', kind: 'static', shape: { type: 'rect', w: 10, h: RAIL_T }, x: 0, y: L / 2, material: 'smooth', color: '#8d97a6', depth: 0.1, label: '导轨', role: 'terrain' }),
+    body({ id: 'railBottom', kind: 'static', shape: { type: 'rect', w: 10, h: RAIL_T }, x: 0, y: -L / 2, material: 'smooth', color: '#8d97a6', depth: 0.1, label: '导轨', role: 'terrain' }),
+    // 导体棒：竖直，跨在两根导轨之间
+    body({
+      id: 'rod',
+      kind: 'rigid',
+      shape: { type: 'rect', w: 0.07, h: L - RAIL_T },
+      x: -3,
+      y: 0,
+      material: 'metal',
+      color: '#c98a3a',
+      mass: 0.5,
+      fixedRotation: true,
+      depth: 0.14,
+      label: '导体棒',
+      role: 'object',
+    }),
+  ]
+  // 默认拉力：layout 会按 params.F 重算，这里给个初值，直接 build 也有力可拉
+  const rod = s.bodies.find((b) => b.id === 'rod')!
+  rod.forces = [{ id: 'pull', x: 1, y: 0 }]
+  s.contactPairs = [
+    { a: 'metal', b: 'smooth', mu: 0, restitution: 0 },
+    { a: 'smooth', b: 'smooth', mu: 0, restitution: 0 },
+  ]
+  s.constraints = [
+    // 只能沿导轨方向滑
+    { id: 'rail', type: 'prismatic', bodyId: 'rod', centerBodyId: 'railBottom', axis: 'x', lower: -2, upper: 8 },
+    // 恒定的外力（拉力），不撤去
+    { id: 'circuit', type: 'circuit', bodyId: 'rod', fieldId: 'B', length: L, resistance: 1, axis: 'x' },
+  ]
+  s.fields = [{ id: 'B', kind: 'uniform', type: 'B', bz: 1, label: 'B 向外' }]
+  s.observers = [
+    { id: 'trail', kind: 'trail', bodyId: 'rod', len: 600 },
+    { id: 'vel', kind: 'vector', bodyId: 'rod', which: ['v'], scale: 0.2 },
+    { id: 'chart', kind: 'chart', axis: 't', series: [{ bodyId: 'rod', quantity: 'v' }], title: 'v–t', unit: 'm/s' },
+  ]
+  s.criteria = []
+  s.guides = []
+  return s
+}
+
+/** 恒力拉动由 layout 展开成 forces，参数改了才能生效 */
+function layoutRailEmf(s: Scene): void {
+  const rod = s.bodies.find((b) => b.id === 'rod')
+  if (!rod) return
+  const RAIL_T = 0.08
+  const L = s.params.Lrod ?? 0.8
+  const F = s.params.F ?? 1
+  rod.forces = [{ id: 'pull', x: F, y: 0 }]
+  rod.mass = s.params.m ?? 0.5
+  // 有效长度变了，棒和导轨都得跟着变——不然「改 L」只是改了个数字，画面不动
+  if (rod.shape.type === 'rect') rod.shape = { type: 'rect', w: rod.shape.w, h: Math.max(0.1, L - RAIL_T) }
+  const top = s.bodies.find((b) => b.id === 'railTop')
+  const bottom = s.bodies.find((b) => b.id === 'railBottom')
+  if (top) top.transform = { ...top.transform, y: L / 2 }
+  if (bottom) bottom.transform = { ...bottom.transform, y: -L / 2 }
+  const c = s.constraints.find((x) => x.type === 'circuit')
+  if (c && c.type === 'circuit') {
+    c.resistance = s.params.res ?? 1
+    c.length = L
+  }
+  const f = s.fields.find((x) => x.id === 'B')
+  if (f && f.kind === 'uniform' && f.type === 'B') f.bz = s.params.B ?? 1
+}
+
 export function buildArcChain(): Scene {
   const s = emptyScene('多过程：斜面 → 水平 → 圆弧')
   s.meta.note =
@@ -1499,6 +1590,14 @@ export const PRESETS: ScenePreset[] = [
     subtitle: '斜面滑下、过粗糙水平、切向进入圆弧；换半径/圆心角就是新题',
     chips: ['多过程', '圆弧', '能量'],
     build: buildArcChain,
+  },
+  {
+    id: 'railEmf',
+    title: '导体棒切割磁感线',
+    subtitle: '恒力拉动导轨上的棒：安培力反抗运动，最后匀速 v = FR/(B²L²)',
+    chips: ['电磁感应', '安培力', '收尾速度'],
+    build: buildRailEmf,
+    layout: layoutRailEmf,
   },
 ]
 

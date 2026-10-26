@@ -17,11 +17,14 @@ import {
   sceneFromPlan,
   sceneFromStages,
 } from '../packages/core/src/ai-plan'
+import { PRESETS } from '../packages/core/src/presets'
 
 describe('模型目录：从 PRESETS 自动派生', () => {
-  it('18 个预置全部进目录，且都能反查到', () => {
+  it('每个预置都进目录，且都能反查到', () => {
     const cat = archetypeCatalog()
-    expect(cat.length).toBe(18)
+    // 别写死数字：目录是从 PRESETS 派生的，写死就变成「加一个预置就要改测试」。
+    // 真正要保证的是「一个不漏」。
+    expect(cat.length).toBe(PRESETS.length)
     expect(cat.map((c) => c.id)).toContain('incline')
     expect(cat.map((c) => c.id)).toContain('arcChain')
     for (const c of cat) expect(isKnownArchetype(c.id)).toBe(true)

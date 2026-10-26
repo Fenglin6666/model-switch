@@ -151,7 +151,6 @@ export type Observer =
       unit?: string
     }
   | { id: string; kind: 'energy'; bodyIds: string[] }
-  | { id: string; kind: 'probe'; bodyId: string; fields: string[] }
 
 export type Criterion =
   | {
@@ -221,6 +220,31 @@ export type Constraint =
   | { id: string; type: 'belt'; bodyId: string; speed: number }
   | { id: string; type: 'pin'; bodyId: string; point: Vec2 }
   | { id: string; type: 'motor'; bodyId: string; omega: number }
+  /**
+   * 导体棒切割磁感线（动生电动势）。
+   *
+   * 为什么是一个「约束」而不是场：它描述的是棒 + 回路 + 磁场三者之间的耦合，
+   * 单独给棒加个外力算不出来——安培力本身依赖速度（F = −B²L²v/R）。
+   * 一条 circuit 约束就把「ε = BLv → I = ε/R → F = BIL」这条链子接上，
+   * 老师只需要调 L / R / 磁场，不用自己填力。
+   *
+   * 只做单棒（双棒各挂一条、共享回路电阻）：
+   *   - `length` 有效长度 L（导轨间距）
+   *   - `resistance` 回路总电阻 R（含棒内阻）
+   *   - `emf0` 外接电源电动势（导轨接电池的题）；缺省 0 = 纯切割
+   *   - `axis` 棒能滑的方向；安培力沿该轴、始终反抗相对运动
+   */
+  | {
+      id: string
+      type: 'circuit'
+      bodyId: string
+      /** 提供磁场的那个场 id（kind='uniform', type='B'） */
+      fieldId: string
+      length: number
+      resistance: number
+      emf0?: number
+      axis?: 'x' | 'y'
+    }
 
 /**
  * 约束的一端。三种写法，优先级从「说人话」到「说坐标」：

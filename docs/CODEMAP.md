@@ -15,7 +15,7 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 
 | 文件 | 行数 |
 |---|---:|
-| `packages/ui/src/app.ts` | 4217 |
+| `packages/ui/src/app.ts` | 4283 |
 | `packages/ui/src/editor/layout.ts` | 93 |
 | `packages/ui/src/editor/drawing.ts` | 131 |
 | `packages/ui/src/pages/bank.ts` | 381 |
@@ -27,9 +27,9 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/ui/src/widgets.ts` | 496 |
 | `packages/ui/src/icons.ts` | 407 |
 | `packages/ui/src/chart.ts` | 194 |
-| `packages/core/src/presets.ts` | 1525 |
-| `packages/core/src/scene.ts` | 517 |
-| `packages/core/src/ai-plan.ts` | 773 |
+| `packages/core/src/presets.ts` | 1624 |
+| `packages/core/src/scene.ts` | 541 |
+| `packages/core/src/ai-plan.ts` | 833 |
 | `packages/core/src/ai-client.ts` | 246 |
 | `packages/core/src/recognize.ts` | 142 |
 | `packages/core/src/bank.ts` | 239 |
@@ -37,13 +37,13 @@ npm run doc:check         # 校验本文件的行数与代码一致（CI 会跑�
 | `packages/core/src/components.ts` | 212 |
 | `packages/core/src/ports.ts` | 166 |
 | `packages/core/src/body-fields.ts` | 165 |
-| `packages/core/src/validate.ts` | 315 |
-| `packages/core/src/params.ts` | 72 |
+| `packages/core/src/validate.ts` | 317 |
+| `packages/core/src/params.ts` | 77 |
 | `packages/core/src/criterion.ts` | 297 |
 | `packages/core/src/serialize.ts` | 251 |
-| `packages/render/src/renderer.ts` | 1247 |
+| `packages/render/src/renderer.ts` | 1264 |
 | `packages/render/src/camera.ts` | 253 |
-| `packages/physics/src/simulation.ts` | 895 |
+| `packages/physics/src/simulation.ts` | 950 |
 | `packages/physics/src/forces.ts` | 126 |
 | `apps/web/src/main.ts` | 285 |
 | `apps/miniprogram/miniprogram/pages/index/index.js` | 179 |
